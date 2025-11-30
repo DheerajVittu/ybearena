@@ -1,14 +1,19 @@
+import { GetBookings } from "@/booking/booking";
+import type { BookingType } from "@/utils/bookingType";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function MainPage() {
   const navigate = useNavigate();
-  // Sample booked slots JSON
-  const bookedSlots = [
-    { date: "2025-11-25", start: "10:00", end: "12:00" },
-    { date: "2025-11-25", start: "15:00", end: "16:00" },
-    { date: "2025-11-26", start: "08:00", end: "10:00" },
-  ];
+  const [bookings, setBookings] = useState<BookingType[]>([]);
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      const response = await GetBookings();
+      setBookings(response);
+    };
+    fetchBookings();
+  }, []);
 
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -25,8 +30,8 @@ export default function MainPage() {
 
   // Get price based on time
   const getPriceForTime = (time) => {
-    const hour = parseInt(time.split(':')[0]);
-    
+    const hour = parseInt(time.split(":")[0]);
+
     if (hour >= 6 && hour < 11) {
       return 600; // Morning: 6 AM to 11 AM
     } else if (hour >= 11 && hour < 17) {
@@ -39,9 +44,21 @@ export default function MainPage() {
   // Calculate amount and time slots breakdown
   useEffect(() => {
     if (startTime && endTime) {
+      console.log(startTime, endTime);
+      const isOverlapping = bookings
+        .filter((slot) => slot.SlotDate === date)
+        .some((slot) => startTime < slot.EndTime && slot.StartTime < endTime);
+
+      if (isOverlapping) {
+        alert("Selected time overlaps with existing bookings");
+        setAmount(0);
+        setTimeSlots([]);
+        return;
+      }
+
       const startDateTime = new Date(`2000-01-01T${startTime}`);
       const endDateTime = new Date(`2000-01-01T${endTime}`);
-      
+
       if (endDateTime <= startDateTime) {
         setAmount(0);
         setTimeSlots([]);
@@ -51,14 +68,14 @@ export default function MainPage() {
       let totalAmount = 0;
       const slots = [];
       let currentSlotStart = new Date(startDateTime);
-      
+
       // Calculate slots with different pricing
       while (currentSlotStart < endDateTime) {
         const currentHour = currentSlotStart.getHours();
         const currentPrice = getPriceForTime(
-          `${currentHour.toString().padStart(2, '0')}:00`
+          `${currentHour.toString().padStart(2, "0")}:00`
         );
-        
+
         // Find when this price period ends
         let currentSlotEnd = new Date(currentSlotStart);
         if (currentHour >= 6 && currentHour < 11) {
@@ -72,28 +89,31 @@ export default function MainPage() {
           currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
           currentSlotEnd.setHours(6, 0, 0, 0);
         }
-        
+
         // Adjust slot end to not exceed booking end
         if (currentSlotEnd > endDateTime) {
           currentSlotEnd = new Date(endDateTime);
         }
-        
-        const slotHours = (currentSlotEnd - currentSlotStart) / (1000 * 60 * 60);
+
+        const slotHours =
+          (currentSlotEnd - currentSlotStart) / (1000 * 60 * 60);
         const slotAmount = slotHours * currentPrice;
-        
+
         if (slotHours > 0) {
           slots.push({
-            period: `${formatTime(currentSlotStart)} - ${formatTime(currentSlotEnd)}`,
+            period: `${formatTime(currentSlotStart)} - ${formatTime(
+              currentSlotEnd
+            )}`,
             hours: slotHours.toFixed(2),
             rate: currentPrice,
-            amount: Math.round(slotAmount)
+            amount: Math.round(slotAmount),
           });
           totalAmount += slotAmount;
         }
-        
+
         currentSlotStart = currentSlotEnd;
       }
-      
+
       setTimeSlots(slots);
       setAmount(Math.round(totalAmount));
     } else {
@@ -125,7 +145,7 @@ export default function MainPage() {
     }
 
     // Navigate to payment page with booking details
-    navigate('/payment', {
+    navigate("/payment", {
       state: {
         bookingDetails: {
           date,
@@ -133,9 +153,9 @@ export default function MainPage() {
           endTime,
           amount,
           timeSlots,
-          coupon
-        }
-      }
+          coupon,
+        },
+      },
     });
   };
 
@@ -159,10 +179,14 @@ export default function MainPage() {
 
           {/* PRICING INFORMATION CARD */}
           <div className="mb-6 p-4 bg-white rounded-xl shadow-md border border-blue-200">
-            <h3 className="font-bold text-blue-800 mb-3 text-lg">🎯 Pricing Information</h3>
+            <h3 className="font-bold text-blue-800 mb-3 text-lg">
+              🎯 Pricing Information
+            </h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Morning (6:00 AM - 11:00 AM):</span>
+                <span className="text-gray-600">
+                  Morning (6:00 AM - 11:00 AM):
+                </span>
                 <span className="font-semibold text-green-600">₹600/hour</span>
               </div>
               <div className="flex justify-between">
@@ -170,7 +194,9 @@ export default function MainPage() {
                 <span className="font-semibold text-blue-600">₹500/hour</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Evening/Night (5:00 PM - 6:00 AM):</span>
+                <span className="text-gray-600">
+                  Evening/Night (5:00 PM - 6:00 AM):
+                </span>
                 <span className="font-semibold text-purple-600">₹800/hour</span>
               </div>
             </div>
@@ -230,14 +256,19 @@ export default function MainPage() {
               <h3 className="text-xl font-bold text-gray-800 mb-4 text-center border-b pb-2">
                 🧾 Booking Invoice
               </h3>
-              
+
               {/* Time Slot Breakdown */}
               <div className="space-y-3 mb-4">
                 {timeSlots.map((slot, index) => (
-                  <div key={index} className="flex justify-between items-center text-sm">
+                  <div
+                    key={index}
+                    className="flex justify-between items-center text-sm"
+                  >
                     <div className="text-gray-600">
                       <div className="font-medium">{slot.period}</div>
-                      <div className="text-xs text-gray-500">{slot.hours} hours × ₹{slot.rate}/hr</div>
+                      <div className="text-xs text-gray-500">
+                        {slot.hours} hours × ₹{slot.rate}/hr
+                      </div>
                     </div>
                     <div className="font-semibold">₹{slot.amount}</div>
                   </div>
@@ -254,7 +285,9 @@ export default function MainPage() {
 
               {/* Total Amount */}
               <div className="flex justify-between items-center pt-3 border-t-2 border-gray-300 mt-2">
-                <div className="text-lg font-bold text-gray-800">Total Amount</div>
+                <div className="text-lg font-bold text-gray-800">
+                  Total Amount
+                </div>
                 <div className="text-xl font-bold text-blue-700">₹{amount}</div>
               </div>
 
@@ -266,7 +299,7 @@ export default function MainPage() {
           )}
 
           {/* BOOK BUTTON */}
-          <button 
+          <button
             onClick={handleBookNow}
             className="mt-6 w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-purple-700 transition transform hover:scale-105 shadow-lg"
           >
@@ -282,35 +315,37 @@ export default function MainPage() {
             📅 Booked Slots
           </h2>
 
-          {bookedSlots.filter((slot) => slot.date === date).length === 0 ? (
+          {bookings.filter((slot) => slot.SlotDate === date).length === 0 ? (
             <div className="p-6 bg-white rounded-xl shadow-md text-center border border-green-200">
-              <p className="font-semibold text-green-700 text-lg">No bookings for this date</p>
+              <p className="font-semibold text-green-700 text-lg">
+                No bookings for this date
+              </p>
               <p className="text-3xl mt-3">🎉</p>
-              <p className="text-sm text-green-600 mt-2">All slots available!</p>
+              <p className="text-sm text-green-600 mt-2">
+                All slots available!
+              </p>
             </div>
           ) : (
             <div className="space-y-4 max-h-96 lg:max-h-[70vh] overflow-y-auto pr-2">
-              {bookedSlots
-                .filter((slot) => slot.date === date)
-                .map((slot, index) => (
-                  <div
-                    key={index}
-                    className="p-4 bg-white rounded-xl shadow-sm border-l-4 border-red-400 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-bold text-red-700 text-lg">
-                          {slot.start} – {slot.end}
-                        </div>
-                        <div className="text-sm text-red-600 flex items-center mt-1">
-                          <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-                          Booked
-                        </div>
+              {bookings.map((slot, index) => (
+                <div
+                  key={index}
+                  className="p-4 bg-white rounded-xl shadow-sm border-l-4 border-red-400 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-red-700 text-lg">
+                        {slot.StartTime} – {slot.EndTime}
                       </div>
-                      <div className="text-red-500 text-xl">⛔</div>
+                      <div className="text-sm text-red-600 flex items-center mt-1">
+                        <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                        Booked
+                      </div>
                     </div>
+                    <div className="text-red-500 text-xl">⛔</div>
                   </div>
-                ))}
+                </div>
+              ))}
             </div>
           )}
         </div>

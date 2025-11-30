@@ -1,3 +1,6 @@
+import { CreateBooking } from "@/booking/booking";
+import type { BookingType } from "@/utils/bookingType";
+import { supabase } from "@/utils/supabase";
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -10,7 +13,7 @@ export default function PaymentPage() {
     name: "",
     phone: "",
     utrNumber: "",
-    paymentScreenshot: null
+    paymentScreenshot: null,
   });
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,30 +27,35 @@ export default function PaymentPage() {
 
   const handleInputChange = (e) => {
     const { name, value, files } = e.target;
-    
+
     if (name === "paymentScreenshot") {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        [name]: files[0]
+        [name]: files[0],
       }));
     } else {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        [name]: value
+        [name]: value,
       }));
     }
 
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ""
+        [name]: "",
       }));
     }
   };
 
   const validateForm = () => {
-    const newErrors = {};
+    const newErrors = {
+      name: "",
+      phone: "",
+      utrNumber: "",
+      paymentScreenshot: "",
+    };
 
     // Name validation
     if (!formData.name.trim()) {
@@ -76,19 +84,65 @@ export default function PaymentPage() {
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    return Object.values(newErrors).every((error) => error === "");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    console.log(validateForm());
     if (validateForm()) {
       setIsSubmitting(true);
-      
       // Simulate API call
+      const file = formData.paymentScreenshot;
+
+      console.log(file);
+      const ext = file?.name?.split(".").pop();
+
+      const safeName = file?.name
+        .toLowerCase()
+        .replace(/\s+/g, "-") // replace spaces
+        .replace(/[^a-z0-9.-]/g, ""); // remove special characters
+
+      const filePath = `uploads/${Date.now()}-${safeName}`;
+      const { data, error } = await supabase.storage
+        .from("images")
+        .upload(
+          `uploads/${Date.now()}-${formData?.paymentScreenshot?.name}`,
+          formData.paymentScreenshot
+        );
+
+      if (error) {
+        console.error(error);
+      }
+
+      const publicUrl = supabase.storage
+        .from("images")
+        .getPublicUrl(data?.path || "").data.publicUrl;
+
+      const bookingData: BookingType = {
+        created_at: new Date().toISOString(),
+        Name: formData.name,
+        Phone: formData.phone,
+        SlotDate: bookingDetails.date,
+        StartTime: bookingDetails.startTime,
+        EndTime: bookingDetails.endTime,
+        UTR: formData.utrNumber,
+        PaymentImage: publicUrl,
+        Amount: bookingDetails.amount,
+        Status: "Pending",
+      };
+      const res = await CreateBooking(bookingData);
+
+      if (res === "Something went wrong") {
+        setIsSubmitting(false);
+        alert(res);
+        return;
+      }
+
       setTimeout(() => {
         setIsSubmitting(false);
-        alert("Booking confirmed! We will verify your payment and send confirmation.");
+        alert(res);
         navigate("/");
       }, 2000);
     }
@@ -98,8 +152,10 @@ export default function PaymentPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600">No Booking Details Found</h2>
-          <button 
+          <h2 className="text-2xl font-bold text-red-600">
+            No Booking Details Found
+          </h2>
+          <button
             onClick={() => navigate("/")}
             className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
@@ -118,7 +174,9 @@ export default function PaymentPage() {
           <h1 className="text-3xl lg:text-4xl font-bold text-blue-800 mb-4">
             Complete Your Booking
           </h1>
-          <p className="text-gray-600">Final step to confirm your cricket box booking</p>
+          <p className="text-gray-600">
+            Final step to confirm your cricket box booking
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -128,15 +186,21 @@ export default function PaymentPage() {
               <span className="bg-blue-100 p-2 rounded-lg mr-3">📋</span>
               Booking Summary
             </h2>
-            
+
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="text-xs text-blue-600 font-semibold">DATE</div>
-                  <div className="text-sm font-bold text-gray-800">{bookingDetails.date}</div>
+                  <div className="text-xs text-blue-600 font-semibold">
+                    DATE
+                  </div>
+                  <div className="text-sm font-bold text-gray-800">
+                    {bookingDetails.date}
+                  </div>
                 </div>
                 <div className="bg-green-50 p-3 rounded-lg">
-                  <div className="text-xs text-green-600 font-semibold">DURATION</div>
+                  <div className="text-xs text-green-600 font-semibold">
+                    DURATION
+                  </div>
                   <div className="text-sm font-bold text-gray-800">
                     {bookingDetails.startTime} - {bookingDetails.endTime}
                   </div>
@@ -145,15 +209,26 @@ export default function PaymentPage() {
 
               {/* Cost Breakdown */}
               <div className="border-t pt-4">
-                <h3 className="font-semibold text-gray-700 mb-3 text-sm">COST BREAKDOWN</h3>
+                <h3 className="font-semibold text-gray-700 mb-3 text-sm">
+                  COST BREAKDOWN
+                </h3>
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
                   {bookingDetails.timeSlots.map((slot, index) => (
-                    <div key={index} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded">
+                    <div
+                      key={index}
+                      className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded"
+                    >
                       <div>
-                        <div className="font-medium text-gray-700">{slot.period}</div>
-                        <div className="text-gray-500">{slot.hours} hrs × ₹{slot.rate}/hr</div>
+                        <div className="font-medium text-gray-700">
+                          {slot.period}
+                        </div>
+                        <div className="text-gray-500">
+                          {slot.hours} hrs × ₹{slot.rate}/hr
+                        </div>
                       </div>
-                      <div className="font-bold text-blue-700">₹{slot.amount}</div>
+                      <div className="font-bold text-blue-700">
+                        ₹{slot.amount}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -162,8 +237,12 @@ export default function PaymentPage() {
               {bookingDetails.coupon && (
                 <div className="flex justify-between items-center bg-yellow-50 p-3 rounded-lg">
                   <div>
-                    <div className="text-xs text-yellow-600 font-semibold">COUPON APPLIED</div>
-                    <div className="text-sm font-bold text-gray-800">{bookingDetails.coupon}</div>
+                    <div className="text-xs text-yellow-600 font-semibold">
+                      COUPON APPLIED
+                    </div>
+                    <div className="text-sm font-bold text-gray-800">
+                      {bookingDetails.coupon}
+                    </div>
                   </div>
                   <div className="text-green-600 font-bold">-₹0</div>
                 </div>
@@ -173,7 +252,9 @@ export default function PaymentPage() {
                 <div className="flex justify-between items-center">
                   <div>
                     <div className="text-sm opacity-90">TOTAL AMOUNT</div>
-                    <div className="text-xl font-bold">₹{bookingDetails.amount}</div>
+                    <div className="text-xl font-bold">
+                      ₹{bookingDetails.amount}
+                    </div>
                   </div>
                   <div className="text-2xl">💰</div>
                 </div>
@@ -202,7 +283,7 @@ export default function PaymentPage() {
                     value={formData.name}
                     onChange={handleInputChange}
                     className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.name ? 'border-red-500' : 'border-gray-300'
+                      errors.name ? "border-red-500" : "border-gray-300"
                     }`}
                     placeholder="Enter your full name"
                   />
@@ -222,7 +303,7 @@ export default function PaymentPage() {
                     value={formData.phone}
                     onChange={handleInputChange}
                     className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.phone ? 'border-red-500' : 'border-gray-300'
+                      errors.phone ? "border-red-500" : "border-gray-300"
                     }`}
                     placeholder="10-digit phone number"
                     maxLength="10"
@@ -248,7 +329,9 @@ export default function PaymentPage() {
                     />
                   </div>
                   <div className="text-center bg-white py-2 rounded-lg border">
-                    <span className="text-lg font-bold text-blue-700">₹{bookingDetails.amount}</span>
+                    <span className="text-lg font-bold text-blue-700">
+                      ₹{bookingDetails.amount}
+                    </span>
                   </div>
                   <p className="text-xs text-gray-600 text-center mt-3">
                     Scan this QR code with PhonePe app to make payment
@@ -268,13 +351,15 @@ export default function PaymentPage() {
                       value={formData.utrNumber}
                       onChange={handleInputChange}
                       className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.utrNumber ? 'border-red-500' : 'border-gray-300'
+                        errors.utrNumber ? "border-red-500" : "border-gray-300"
                       }`}
                       placeholder="Enter 12-digit UTR number"
                       maxLength="12"
                     />
                     {errors.utrNumber && (
-                      <p className="text-red-500 text-sm mt-1">{errors.utrNumber}</p>
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.utrNumber}
+                      </p>
                     )}
                     <div className="flex items-center mt-2 text-xs text-gray-500">
                       <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
@@ -287,9 +372,13 @@ export default function PaymentPage() {
                     <label className="block font-semibold text-gray-700 mb-2">
                       Payment Screenshot *
                     </label>
-                    <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
-                      errors.paymentScreenshot ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                    }`}>
+                    <div
+                      className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
+                        errors.paymentScreenshot
+                          ? "border-red-500 bg-red-50"
+                          : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                      }`}
+                    >
                       <input
                         type="file"
                         name="paymentScreenshot"
@@ -298,10 +387,15 @@ export default function PaymentPage() {
                         className="hidden"
                         id="paymentScreenshot"
                       />
-                      <label htmlFor="paymentScreenshot" className="cursor-pointer">
+                      <label
+                        htmlFor="paymentScreenshot"
+                        className="cursor-pointer"
+                      >
                         <div className="text-3xl mb-2">📸</div>
                         <div className="text-sm font-medium text-gray-700">
-                          {formData.paymentScreenshot ? formData.paymentScreenshot.name : 'Click to upload screenshot'}
+                          {formData.paymentScreenshot
+                            ? formData.paymentScreenshot.name
+                            : "Click to upload screenshot"}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           Upload screenshot of successful payment
@@ -309,7 +403,9 @@ export default function PaymentPage() {
                       </label>
                     </div>
                     {errors.paymentScreenshot && (
-                      <p className="text-red-500 text-sm mt-2 text-center">{errors.paymentScreenshot}</p>
+                      <p className="text-red-500 text-sm mt-2 text-center">
+                        {errors.paymentScreenshot}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -322,8 +418,13 @@ export default function PaymentPage() {
                   Important Notes
                 </h4>
                 <ul className="text-xs text-yellow-700 space-y-1">
-                  <li>• Booking will be confirmed only after payment verification</li>
-                  <li>• Keep your UTR number and screenshot ready before submitting</li>
+                  <li>
+                    • Booking will be confirmed only after payment verification
+                  </li>
+                  <li>
+                    • Keep your UTR number and screenshot ready before
+                    submitting
+                  </li>
                   {/* <li>• You will receive confirmation SMS within 30 minutes</li> */}
                   <li>• For issues, contact: +91-9876543210</li>
                 </ul>
@@ -343,8 +444,8 @@ export default function PaymentPage() {
                   disabled={isSubmitting}
                   className={`flex-1 py-4 font-bold rounded-xl transition transform shadow-lg ${
                     isSubmitting
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 hover:scale-105 text-white'
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 hover:scale-105 text-white"
                   }`}
                 >
                   {isSubmitting ? (
