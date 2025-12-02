@@ -12,13 +12,15 @@ import {
   AlertCircle,
   ChevronDown,
 } from "lucide-react";
-import { Button } from "@mui/material";
+import { Button, Alert, Snackbar } from "@mui/material";
 
 export default function MainPage() {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<BookingType[]>([]);
   const startDropdownRef = useRef<HTMLDivElement>(null);
   const endDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Alert state for MUI Snackbar
   const [alert, setAlert] = useState({
     open: false,
     message: "",
@@ -38,7 +40,12 @@ export default function MainPage() {
   const [endTime, setEndTime] = useState("");
   const [amount, setAmount] = useState(0);
   const [coupon, setCoupon] = useState("");
-  const [timeSlots, setTimeSlots] = useState([]);
+  const [timeSlots, setTimeSlots] = useState<Array<{
+    period: string;
+    hours: string;
+    rate: number;
+    amount: number;
+  }>>([]);
   const [errors, setErrors] = useState({
     date: "",
     startTime: "",
@@ -71,15 +78,10 @@ export default function MainPage() {
   // Generate time options with only 00 and 30 minutes
   const generateTimeOptions = () => {
     const options = [];
-
-    // Generate times from 0:00 to 23:30
     for (let hour = 0; hour < 24; hour++) {
-      // Add :00 option
       options.push(`${hour.toString().padStart(2, "0")}:00`);
-      // Add :30 option
       options.push(`${hour.toString().padStart(2, "0")}:30`);
     }
-
     return options;
   };
 
@@ -88,14 +90,6 @@ export default function MainPage() {
     const today = new Date().toISOString().split("T")[0];
     return dateString === today;
   };
-
-  // Check if selected date is tomorrow
-  // const isTomorrow = (dateString: string) => {
-  //   const tomorrow = new Date();
-  //   tomorrow.setDate(tomorrow.getDate() + 1);
-  //   const tomorrowString = tomorrow.toISOString().split('T')[0];
-  //   return dateString === tomorrowString;
-  // };
 
   // Convert time to minutes for comparison
   const timeToMinutes = (time: string) => {
@@ -110,8 +104,6 @@ export default function MainPage() {
 
     const startMinutes = timeToMinutes(start);
     const endMinutes = timeToMinutes(end);
-
-    // If end is midnight (00:00), treat it as 24:00 (end of day)
     const adjustedEndMinutes = end === "00:00" ? 24 * 60 : endMinutes;
 
     return adjustedEndMinutes > startMinutes;
@@ -127,8 +119,8 @@ export default function MainPage() {
   // Function to check if a date is weekend
   const isWeekend = (dateString: string) => {
     const date = new Date(dateString);
-    const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    return day === 0 || day === 5 || day === 6; // Sunday, Friday, Saturday
+    const day = date.getDay();
+    return day === 0 || day === 5 || day === 6;
   };
 
   // Get price based on time and day type
@@ -137,22 +129,20 @@ export default function MainPage() {
     const isWeekendDay = isWeekend(dateString);
 
     if (isWeekendDay) {
-      // Weekend pricing (Fri, Sat, Sun)
       if (hour >= 6 && hour < 12) {
-        return 700; // 6 AM to 12 PM
+        return 700;
       } else if (hour >= 12 && hour < 18) {
-        return 600; // 12 PM to 6 PM
+        return 600;
       } else {
-        return 900; // 6 PM to 6 AM
+        return 900;
       }
     } else {
-      // Weekday pricing (Mon, Tue, Wed, Thu)
       if (hour >= 6 && hour < 12) {
-        return 600; // 6 AM to 12 PM
+        return 600;
       } else if (hour >= 12 && hour < 18) {
-        return 500; // 12 PM to 6 PM
+        return 500;
       } else {
-        return 700; // 6 PM to 6 AM
+        return 700;
       }
     }
   };
@@ -161,9 +151,6 @@ export default function MainPage() {
   const validateDate = (selectedDate: string) => {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
-    // const selected = new Date(selectedDate);
-
-    // Reset errors
     setErrors((prev) => ({ ...prev, date: "" }));
 
     if (selectedDate < today) {
@@ -173,7 +160,7 @@ export default function MainPage() {
     return true;
   };
 
-  // Validate time selection (FIXED for overnight bookings)
+  // Validate time selection
   const validateTimes = (start: string, end: string, selectedDate: string) => {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
@@ -182,22 +169,18 @@ export default function MainPage() {
     let isValid = true;
     const newErrors = { startTime: "", endTime: "" };
 
-    // Check if date is today
     if (selectedDate === today) {
-      // Check if start time is in the past
       if (start && start < currentTime) {
         newErrors.startTime = "Start time cannot be in the past";
         isValid = false;
       }
 
-      // Check if end time is in the past (except for midnight)
       if (end && end !== "00:00" && end < currentTime) {
         newErrors.endTime = "End time cannot be in the past";
         isValid = false;
       }
     }
 
-    // Check if end time is after start time (FIXED for midnight)
     if (start && end && !isTimeGreater(start, end)) {
       newErrors.endTime = "End time must be after start time";
       isValid = false;
@@ -212,13 +195,11 @@ export default function MainPage() {
     setDate(selectedDate);
     validateDate(selectedDate);
 
-    // Reset times if date changes to past
     if (selectedDate < new Date().toISOString().split("T")[0]) {
       setStartTime("");
       setEndTime("");
     }
 
-    // If date changed and it's today, revalidate times
     const today = new Date().toISOString().split("T")[0];
     if (selectedDate === today && (startTime || endTime)) {
       validateTimes(startTime, endTime, selectedDate);
@@ -243,37 +224,30 @@ export default function MainPage() {
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 5);
 
-    // If date is today, filter out past times
     if (isToday(date)) {
       return options.filter((option) => {
-        // For today, remove midnight (00:00) from start options
         if (option === "00:00") return false;
         return option >= currentTime;
       });
     }
 
-    // For future dates (tomorrow or later), include all times including midnight
     return options;
   };
 
-  // Filter time options for END time (FIXED for overnight bookings)
+  // Filter time options for END time
   const getEndTimeOptions = () => {
     let options = generateTimeOptions();
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 5);
 
-    // Filter out options that are not after start time
     if (startTime) {
       options = options.filter((option) => {
-        // Use the fixed comparison function
         return isTimeGreater(startTime, option);
       });
     }
 
-    // If date is today, filter out past times
     if (isToday(date)) {
       options = options.filter((option) => {
-        // For today, allow midnight (00:00) in end options
         if (option === "00:00") return true;
         return option > currentTime;
       });
@@ -286,135 +260,132 @@ export default function MainPage() {
     setCoupon(e.target.value);
   };
 
-  // Calculate amount and time slots breakdown (FIXED for overnight bookings)
-  useEffect(() => {
-    if (
-      startTime &&
-      endTime &&
-      errors.startTime === "" &&
-      errors.endTime === "" &&
-      errors.date === ""
-    ) {
-      const isOverlapping = bookings
-        .filter((slot) => slot.SlotDate === date)
-        .some((slot) => {
-          // Handle overlapping logic for overnight bookings
-          const slotStart = slot.StartTime;
-          const slotEnd = slot.EndTime;
+  // Calculate amount and time slots breakdown
+useEffect(() => {
+  if (
+    startTime &&
+    endTime &&
+    errors.startTime === "" &&
+    errors.endTime === "" &&
+    errors.date === ""
+  ) {
+    const isOverlapping = bookings
+      .filter((slot) => slot.SlotDate === date)
+      .some((slot) => {
+        const slotStart = slot.StartTime;
+        const slotEnd = slot.EndTime;
 
-          // Convert all times to minutes for proper comparison
-          const startMinutes = timeToMinutes(startTime);
-          const endMinutes = timeToMinutes(endTime);
-          const slotStartMinutes = timeToMinutes(slotStart);
-          const slotEndMinutes = timeToMinutes(slotEnd);
+        const startMinutes = timeToMinutes(startTime);
+        const endMinutes = timeToMinutes(endTime);
+        const slotStartMinutes = timeToMinutes(slotStart);
+        const slotEndMinutes = timeToMinutes(slotEnd);
 
-          // Handle midnight as end of day
-          const adjustedEndMinutes = endTime === "00:00" ? 24 * 60 : endMinutes;
-          const adjustedSlotEndMinutes =
-            slotEnd === "00:00" ? 24 * 60 : slotEndMinutes;
+        const adjustedEndMinutes = endTime === "00:00" ? 24 * 60 : endMinutes;
+        const adjustedSlotEndMinutes =
+          slotEnd === "00:00" ? 24 * 60 : slotEndMinutes;
 
-          // Check for overlap
-          return (
-            startMinutes < adjustedSlotEndMinutes &&
-            adjustedEndMinutes > slotStartMinutes
-          );
-        });
-
-      if (isOverlapping) {
-        alert("Selected time overlaps with existing bookings");
-        setAmount(0);
-        setTimeSlots([]);
-        return;
-      }
-
-      const startDateTime = new Date(`2000-01-01T${startTime}`);
-      let endDateTime = new Date(`2000-01-01T${endTime}`);
-
-      // Handle midnight as next day
-      if (endTime === "00:00") {
-        endDateTime = new Date(`2000-01-02T${endTime}`);
-      }
-
-      let totalAmount = 0;
-      const slots = [];
-      let currentSlotStart = new Date(startDateTime);
-
-      // Calculate slots with different pricing
-      while (currentSlotStart < endDateTime) {
-        const currentHour = currentSlotStart.getHours();
-        const currentPrice = getPriceForTime(
-          `${currentHour.toString().padStart(2, "0")}:00`,
-          date
+        return (
+          startMinutes < adjustedSlotEndMinutes &&
+          adjustedEndMinutes > slotStartMinutes
         );
+      });
 
-        // Find when this price period ends
-        let currentSlotEnd = new Date(currentSlotStart);
-
-        // Determine period boundaries based on weekend status
-        const isWeekendDay = isWeekend(date);
-        let nextPeriodHour: number;
-
-        if (isWeekendDay) {
-          if (currentHour >= 6 && currentHour < 12) {
-            nextPeriodHour = 12; // Morning slot ends at 12 PM
-          } else if (currentHour >= 12 && currentHour < 18) {
-            nextPeriodHour = 18; // Afternoon slot ends at 6 PM
-          } else {
-            // Evening slot ends at 6 AM next day
-            currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
-            nextPeriodHour = 6;
-          }
-        } else {
-          if (currentHour >= 6 && currentHour < 12) {
-            nextPeriodHour = 12; // Morning slot ends at 12 PM
-          } else if (currentHour >= 12 && currentHour < 18) {
-            nextPeriodHour = 18; // Afternoon slot ends at 6 PM
-          } else {
-            // Evening slot ends at 6 AM next day
-            currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
-            nextPeriodHour = 6;
-          }
-        }
-
-        if (currentHour < 6 && currentHour >= 0) {
-          // Handle overnight hours (12 AM to 6 AM)
-          currentSlotEnd.setHours(6, 0, 0, 0);
-        } else if (currentSlotEnd.getHours() !== nextPeriodHour) {
-          currentSlotEnd.setHours(nextPeriodHour, 0, 0, 0);
-        }
-
-        // Adjust slot end to not exceed booking end
-        if (currentSlotEnd > endDateTime) {
-          currentSlotEnd = new Date(endDateTime);
-        }
-
-        const slotHours =
-          (currentSlotEnd - currentSlotStart) / (1000 * 60 * 60);
-        const slotAmount = slotHours * currentPrice;
-
-        if (slotHours > 0) {
-          slots.push({
-            period: `${formatTime(currentSlotStart)} - ${formatTime(
-              currentSlotEnd
-            )}`,
-            hours: slotHours.toFixed(2),
-            rate: currentPrice,
-            amount: Math.round(slotAmount),
-          });
-          totalAmount += slotAmount;
-        }
-
-        currentSlotStart = currentSlotEnd;
-      }
-
-      setTimeSlots(slots);
-      setAmount(Math.round(totalAmount));
-    } else {
+    if (isOverlapping) {
+      setAlert({
+        open: true,
+        message: "Selected time overlaps with existing bookings",
+        severity: "error",
+      });
       setAmount(0);
       setTimeSlots([]);
+      return;
     }
-  }, [startTime, endTime, date, errors]);
 
+    const startDateTime = new Date(`2000-01-01T${startTime}`);
+    let endDateTime = new Date(`2000-01-01T${endTime}`);
+
+    if (endTime === "00:00") {
+      endDateTime = new Date(`2000-01-02T${endTime}`);
+    }
+
+    let totalAmount = 0;
+    const slots: Array<{
+      period: string;
+      hours: string;
+      rate: number;
+      amount: number;
+    }> = [];
+    let currentSlotStart = new Date(startDateTime);
+
+    while (currentSlotStart < endDateTime) {
+      const currentHour = currentSlotStart.getHours();
+      const currentPrice = getPriceForTime(
+        `${currentHour.toString().padStart(2, "0")}:00`,
+        date
+      );
+
+      let currentSlotEnd = new Date(currentSlotStart);
+      const isWeekendDay = isWeekend(date);
+      let nextPeriodHour: number;
+
+      if (isWeekendDay) {
+        if (currentHour >= 6 && currentHour < 12) {
+          nextPeriodHour = 12;
+        } else if (currentHour >= 12 && currentHour < 18) {
+          nextPeriodHour = 18;
+        } else {
+          currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
+          nextPeriodHour = 6;
+        }
+      } else {
+        if (currentHour >= 6 && currentHour < 12) {
+          nextPeriodHour = 12;
+        } else if (currentHour >= 12 && currentHour < 18) {
+          nextPeriodHour = 18;
+        } else {
+          currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
+          nextPeriodHour = 6;
+        }
+      }
+
+      if (currentHour < 6 && currentHour >= 0) {
+        currentSlotEnd.setHours(6, 0, 0, 0);
+      } else if (currentSlotEnd.getHours() !== nextPeriodHour) {
+        currentSlotEnd.setHours(nextPeriodHour, 0, 0, 0);
+      }
+
+      if (currentSlotEnd > endDateTime) {
+        currentSlotEnd = new Date(endDateTime);
+      }
+
+      // FIX: Get time values as numbers before arithmetic
+      const slotStartTime = currentSlotStart.getTime();
+      const slotEndTime = currentSlotEnd.getTime();
+      const slotHours = (slotEndTime - slotStartTime) / (1000 * 60 * 60);
+      const slotAmount = slotHours * currentPrice;
+
+      if (slotHours > 0) {
+        slots.push({
+          period: `${formatTime(currentSlotStart)} - ${formatTime(
+            currentSlotEnd
+          )}`,
+          hours: slotHours.toFixed(2),
+          rate: currentPrice,
+          amount: Math.round(slotAmount),
+        });
+        totalAmount += slotAmount;
+      }
+
+      currentSlotStart = currentSlotEnd;
+    }
+
+    setTimeSlots(slots);
+    setAmount(Math.round(totalAmount));
+  } else {
+    setAmount(0);
+    setTimeSlots([]);
+  }
+}, [startTime, endTime, date, errors, bookings]);
   const formatTime = (date: Date) => {
     return date.toTimeString().slice(0, 5);
   };
@@ -433,11 +404,10 @@ export default function MainPage() {
     const amt = Math.round(
       data ? amount - amount * (data?.Percentage / 100) : amount
     );
-    console.log(amt);
     setAmount(amt);
   };
+
   const handleBookNow = async () => {
-    // Validate all fields before proceeding
     if (!validateDate(date)) {
       setAlert({
         open: true,
@@ -465,7 +435,6 @@ export default function MainPage() {
       return;
     }
 
-    // Navigate to payment page with booking details
     navigate("/payment", {
       state: {
         bookingDetails: {
@@ -480,28 +449,12 @@ export default function MainPage() {
     });
   };
 
-  // Get current day type for display
-  // const getDayType = (dateString: string) => {
-  //   return isWeekend(dateString) ? "Weekend" : "Weekday";
-  // };
-
-  // Open maps with address
-  const openMaps = () => {
-    const address = "Reddy's Colony, Road No-3, Boduppal, Hyderabad, Telangana";
-    const encodedAddress = encodeURIComponent(address);
-    window.open(
-      `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-      "_blank"
-    );
-  };
-
-  // Format time for display (handle midnight specially)
+  // Format time for display
   const formatTimeDisplay = (time: string) => {
     if (!time) return "Select time";
     const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
 
-    // Handle midnight (00:00)
     if (hour === 0 && minutes === "00") {
       return "12:00 AM (Midnight)";
     }
@@ -519,8 +472,35 @@ export default function MainPage() {
     return hour < 12 ? "AM" : "PM";
   };
 
+  // Open maps with address
+  const openMaps = () => {
+    const address = "Reddy's Colony, Road No-3, Boduppal, Hyderabad, Telangana";
+    const encodedAddress = encodeURIComponent(address);
+    window.open(
+      `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+      "_blank"
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Snackbar for Alerts */}
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={() => setAlert(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setAlert(prev => ({ ...prev, open: false }))}
+          severity={alert.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {alert.message}
+        </Alert>
+      </Snackbar>
+
       {/* HEADER - Logo on left, Name on right */}
       <header className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 shadow-lg">
         <div className="container mx-auto">
@@ -698,14 +678,6 @@ export default function MainPage() {
                           )}
                         </button>
                       ))}
-                      {/* Midnight Note */}
-                      {/* {isToday(date) && (
-                        <div className="px-4 py-2 bg-gray-50 border-t border-gray-200">
-                          <div className="text-xs text-gray-500">
-                            <span className="font-medium">Note:</span> Midnight (12:00 AM) is available only for end time selection today
-                          </div>
-                        </div>
-                      )} */}
                     </div>
                   )}
 
@@ -781,14 +753,6 @@ export default function MainPage() {
                           )}
                         </button>
                       ))}
-                      {/* Midnight Note */}
-                      {/* {getEndTimeOptions().includes("00:00") && (
-                        <div className="px-4 py-2 bg-gray-50 border-t border-gray-200">
-                          <div className="text-xs text-gray-500">
-                            <span className="font-medium">Overnight Booking:</span> Midnight (12:00 AM) represents the end of the day
-                          </div>
-                        </div>
-                      )} */}
                     </div>
                   )}
 
@@ -848,11 +812,6 @@ export default function MainPage() {
                           Selected: {formatTimeDisplay(startTime)} to{" "}
                           {formatTimeDisplay(endTime)}
                         </span>
-                        {/* {endTime === "00:00" && startTime >= "18:00" && (
-                        <div className="text-green-600 text-sm mt-1">
-                          ✓ Overnight booking confirmed (until midnight)
-                        </div>
-                      )} */}
                       </div>
                     </div>
                   </div>
@@ -888,13 +847,6 @@ export default function MainPage() {
                     <span className="mr-2">🧾</span>
                     Booking Summary
                   </h3>
-
-                  {/* Day Type Badge */}
-                  {/* <div className="mb-4 inline-block">
-                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${isWeekend(date) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                    {getDayType(date)} Rates Applied
-                  </span>
-                </div> */}
 
                   {/* Time Slots Breakdown */}
                   <div className="space-y-3 mb-4">

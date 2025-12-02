@@ -33,8 +33,14 @@ export default function SuccessPage() {
     );
   }
 
-  const { bookingDetails, contactPerson, venueAddress } = bookingData;
+  const { bookingDetails, contactPerson, venueAddress, originalAmount } = bookingData;
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueAddress)}`;
+  
+  // Calculate amounts based on payment type
+  const isFullPayment = bookingDetails.PaymentType === "Full Payment";
+  const amountPaid = bookingDetails.Amount;
+  const totalAmount = originalAmount || bookingDetails.Amount;
+  const balanceAmount = bookingDetails.BalanceAmount || 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 py-8 px-4">
@@ -109,36 +115,41 @@ export default function SuccessPage() {
                     <div className="text-sm font-semibold text-gray-700">Total Amount</div>
                     <div className="text-xs text-gray-500">Complete booking cost</div>
                   </div>
-                  <div className="text-xl font-bold text-gray-800">₹{bookingDetails.Amount}</div>
+                  <div className="text-xl font-bold text-gray-800">₹{totalAmount}</div>
                 </div>
 
                 <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                   <div>
-                    <div className="text-sm font-semibold text-blue-700">Payment Type</div>
+                    <div className="text-sm font-semibold text-blue-700">Amount Paid</div>
                     <div className="text-xs text-blue-600">{bookingDetails.PaymentType}</div>
                   </div>
-                  <div className="text-lg font-bold text-blue-700">₹{bookingDetails.AmountPaid}</div>
+                  <div className="text-lg font-bold text-blue-700">₹{amountPaid}</div>
                 </div>
 
-                {bookingDetails.RemainingAmount > 0 && (
+                {!isFullPayment && balanceAmount > 0 && (
                   <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
                     <div>
-                      <div className="text-sm font-semibold text-yellow-700">Remaining Amount</div>
+                      <div className="text-sm font-semibold text-yellow-700">Balance Amount</div>
                       <div className="text-xs text-yellow-600">To be paid at venue</div>
                     </div>
-                    <div className="text-lg font-bold text-yellow-700">₹{bookingDetails.RemainingAmount}</div>
+                    <div className="text-lg font-bold text-yellow-700">₹{balanceAmount}</div>
                   </div>
                 )}
 
-                <div className="mt-4 p-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white">
+                {/* <div className="mt-4 p-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white">
                   <div className="flex justify-between items-center">
                     <div>
                       <div className="text-sm opacity-90">AMOUNT PAID</div>
-                      <div className="text-xl font-bold">₹{bookingDetails.AmountPaid}</div>
+                      <div className="text-xl font-bold">₹{amountPaid}</div>
+                      {!isFullPayment && (
+                        <div className="text-xs opacity-80 mt-1">
+                          Balance ₹{balanceAmount} to be paid at venue
+                        </div>
+                      )}
                     </div>
                     <div className="text-2xl">✅</div>
                   </div>
-                </div>
+                </div> */}
               </div>
             </div>
           </div>
@@ -172,7 +183,6 @@ export default function SuccessPage() {
                     <ul className="space-y-1">
                       <li>• Venue opens 30 minutes before first booking</li>
                       <li>• Parking available on-site</li>
-                      <li>• Changing rooms available</li>
                     </ul>
                   </div>
                 </div>
@@ -248,11 +258,11 @@ export default function SuccessPage() {
               <ul className="space-y-2 text-sm text-gray-600">
                 <li className="flex items-start">
                   <span className="text-green-600 mr-2">✓</span>
-                  Come to venue <span className="font-bold">5 minutes prior</span> to your booking time
+                  Come to venue 5 minutes prior to your booking time
                 </li>
                 <li className="flex items-start">
                   <span className="text-red-600 mr-2">✗</span>
-                  <span className="font-bold">No extra time</span> will be given if you're late
+                  No extra time will be given if you're late
                 </li>
                 <li className="flex items-start">
                   <span className="text-red-600 mr-2">✗</span>
@@ -277,38 +287,21 @@ export default function SuccessPage() {
               <ul className="space-y-2 text-sm text-gray-600">
                 <li className="flex items-start">
                   <span className="text-green-600 mr-2">✓</span>
-                  <span className="font-bold">Partial payment bookings:</span> Pay remaining amount at venue before starting
+                  {!isFullPayment ? `Pay remaining ₹${balanceAmount} at venue before starting` : 'Full payment completed'}
                 </li>
                 <li className="flex items-start">
                   <span className="text-red-600 mr-2">✗</span>
-                  <span className="font-bold">No refunds</span> for late arrivals or no-shows
-                </li>
-                <li className="flex items-start">
-                  <span className="text-orange-600 mr-2">⚠</span>
-                  Cancellations must be made <span className="font-bold">24 hours in advance</span>
+                  No refunds for late arrivals or no-shows
                 </li>
                 <li className="flex items-start">
                   <span className="text-green-600 mr-2">✓</span>
-                  Bring UTR receipt and ID proof for verification
+                  Bring UTR receipt for verification
                 </li>
                 <li className="flex items-start">
                   <span className="text-blue-600 mr-2">ℹ</span>
                   For any issues, contact venue manager immediately
                 </li>
               </ul>
-            </div>
-          </div>
-
-          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-start">
-              <Info className="text-yellow-600 mr-2 mt-0.5" />
-              <div>
-                <div className="font-bold text-yellow-800">Emergency Contact</div>
-                <div className="text-sm text-yellow-700">
-                  In case of any emergency or if you cannot reach the venue manager, 
-                  call the emergency helpline: <span className="font-bold">+91-9876543210</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -327,14 +320,8 @@ export default function SuccessPage() {
           >
             ← Back to Home
           </button>
-          <button
-            onClick={() => navigate("/bookings")}
-            className="flex-1 py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg"
-          >
-            📋 View My Bookings
-          </button>
         </div>
-
+        
         {/* Footer Note */}
         <div className="mt-8 text-center text-sm text-gray-500">
           <p>A confirmation SMS has been sent to your registered phone number.</p>

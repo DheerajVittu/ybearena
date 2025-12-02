@@ -25,6 +25,7 @@ export const GetBookings = async() => {
       console.error("Supabase error:", response.error);
       return [];
     }
+    console.log("Bookings fetched:", response.data);
     return response.data as BookingType[];
   }
   catch(error:any){
@@ -78,6 +79,7 @@ export const GetBankAccounts = async() => {
       console.error("Supabase error:", error);
       return [];
     }
+    console.log("Bank accounts fetched:", data);
     return data;
   }
   catch(error:any){
