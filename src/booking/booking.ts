@@ -11,7 +11,7 @@ export const CreateBooking = async (bookingData: BookingType) => {
       }
       return response.error.details || "Something went wrong";
     }
-    return  "Booking created successfully";
+    return  "Success";
   } catch (error:any) {
     console.error("Error creating booking:", error?.message);
     return "Something went wrong";
