@@ -13,3 +13,13 @@ export type BookingType = {
     CouponCode:string;
     Status:string;
 }
+
+export type BankAccountType = {
+    id:number;
+    AccountNumber:string;
+    Message:string;
+    Phone:string;
+    Scanner:string;
+    created_at:string;
+    Upi:string;
+}

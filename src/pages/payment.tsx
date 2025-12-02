@@ -1,13 +1,15 @@
 import {
-  ApplyCoupon,
   CreateBooking,
   UpdateCouponUsage,
+  GetBankAccounts,
 } from "@/booking/booking";
-import type { BookingType } from "@/utils/bookingType";
+import type { BankAccountType, BookingType } from "@/utils/bookingType";
+// import type { BankAccountType } from "@/utils/bankAccountType";
 import { supabase } from "@/utils/supabase";
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Alert, Snackbar } from "@mui/material";
+import { Copy, Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function PaymentPage() {
   const location = useLocation();
@@ -18,10 +20,16 @@ export default function PaymentPage() {
     name: "",
     phone: "",
     utrNumber: "",
-    paymentScreenshot: null,
+    paymentScreenshot: null as File | null,
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // State for bank accounts
+  const [bankAccounts, setBankAccounts] = useState<BankAccountType[]>([]);
+  const [currentAccountIndex, setCurrentAccountIndex] = useState(0);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  // const sliderRef = useRef<HTMLDivElement>(null);
 
   // New state for payment option
   const [paymentOption, setPaymentOption] = useState<"full" | "partial">(
@@ -35,13 +43,23 @@ export default function PaymentPage() {
     severity: "info" as "success" | "error" | "warning" | "info",
   });
 
+  // Fetch bank accounts on component mount
+  useEffect(() => {
+    const fetchBankAccounts = async () => {
+      const accounts = await GetBankAccounts();
+      setBankAccounts(accounts);
+    };
+    
+    fetchBankAccounts();
+  }, []);
+
   // Calculate amounts
   const fullAmount = bookingDetails?.amount || 0;
   const partialAmount = Math.round(fullAmount * 0.5);
   useEffect(() => {
     const amountPay = paymentOption === "full" ? fullAmount : partialAmount;
     setAmountToPay(amountPay);
-  }, [fullAmount, partialAmount]);
+  }, [fullAmount, partialAmount, paymentOption]);
 
   // Redirect if no booking details
   useEffect(() => {
@@ -55,10 +73,10 @@ export default function PaymentPage() {
     setAlert((prev) => ({ ...prev, open: false }));
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, files } = e.target;
 
-    if (name === "paymentScreenshot") {
+    if (name === "paymentScreenshot" && files && files.length > 0) {
       setFormData((prev) => ({
         ...prev,
         [name]: files[0],
@@ -79,13 +97,39 @@ export default function PaymentPage() {
     }
   };
 
+  // Function to copy text to clipboard
+  const copyToClipboard = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedField(null);
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  // Slider navigation functions
+  const nextAccount = () => {
+    setCurrentAccountIndex((prev) => 
+      prev === bankAccounts.length - 1 ? 0 : prev + 1
+    );
+  };
+
+  const prevAccount = () => {
+    setCurrentAccountIndex((prev) => 
+      prev === 0 ? bankAccounts.length - 1 : prev - 1
+    );
+  };
+
+  const goToAccount = (index: number) => {
+    setCurrentAccountIndex(index);
+  };
+
   const validateForm = () => {
-    const newErrors = {
-      name: "",
-      phone: "",
-      utrNumber: "",
-      paymentScreenshot: "",
-    };
+    const newErrors: Record<string, string> = {};
 
     // Name validation
     if (!formData.name.trim()) {
@@ -118,87 +162,93 @@ export default function PaymentPage() {
     return Object.values(newErrors).every((error) => error === "");
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
       setIsSubmitting(true);
 
-      // Upload payment screenshot
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("images")
-        .upload(
-          `uploads/${Date.now()}-${formData?.paymentScreenshot?.name}`,
-          formData.paymentScreenshot
-        );
+      try {
+        // Upload payment screenshot
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("images")
+          .upload(
+            `uploads/${Date.now()}-${formData.paymentScreenshot?.name}`,
+            formData.paymentScreenshot as File
+          );
 
-      if (uploadError) {
-        console.error(uploadError);
-        setAlert({
-          open: true,
-          message: "Failed to upload payment screenshot. Please try again.",
-          severity: "error",
-        });
-        setIsSubmitting(false);
-        return;
-      }
+        if (uploadError) {
+          console.error(uploadError);
+          setAlert({
+            open: true,
+            message: "Failed to upload payment screenshot. Please try again.",
+            severity: "error",
+          });
+          setIsSubmitting(false);
+          return;
+        }
 
-      const publicUrl = supabase.storage
-        .from("images")
-        .getPublicUrl(uploadData?.path || "").data.publicUrl;
+        const publicUrl = supabase.storage
+          .from("images")
+          .getPublicUrl(uploadData?.path || "").data.publicUrl;
 
-      const bookingData: BookingType = {
-        created_at: new Date().toISOString(),
-        Name: formData.name,
-        Phone: formData.phone,
-        SlotDate: bookingDetails.date,
-        StartTime: bookingDetails.startTime,
-        EndTime: bookingDetails.endTime,
-        UTR: formData.utrNumber,
-        PaymentImage: publicUrl,
-        Amount: amountToPay,
-        CouponCode: bookingDetails.coupon || "",
-        PaymentType:
-          paymentOption === "full" ? "Full Payment" : "Partial Payment (50%)",
-        BalanceAmount:
-          paymentOption === "full" ? 0 : bookingDetails.amount - amountToPay,
-        Status: paymentOption === "full" ? "Confirmed" : "Partially Paid",
-      };
+        const bookingData: BookingType = {
+          created_at: new Date().toISOString(),
+          Name: formData.name,
+          Phone: formData.phone,
+          SlotDate: bookingDetails.date,
+          StartTime: bookingDetails.startTime,
+          EndTime: bookingDetails.endTime,
+          UTR: formData.utrNumber,
+          PaymentImage: publicUrl,
+          Amount: amountToPay,
+          CouponCode: bookingDetails.coupon || "",
+          PaymentType:
+            paymentOption === "full" ? "Full Payment" : "Partial Payment (50%)",
+          BalanceAmount:
+            paymentOption === "full" ? 0 : bookingDetails.amount - amountToPay,
+          Status: paymentOption === "full" ? "Confirmed" : "Partially Paid",
+        };
 
-      const res = await CreateBooking(bookingData);
+        const res = await CreateBooking(bookingData);
 
-      if (res !== "Success") {
-        setIsSubmitting(false);
-        setAlert({
-          open: true,
-          message: res,
-          severity: "error",
-        });
-        return;
-      }
+        // Check if res is "Booking created successfully" string
+        if (res !== "Booking created successfully") {
+          setIsSubmitting(false);
+          setAlert({
+            open: true,
+            message: res as string,
+            severity: "error",
+          });
+          return;
+        }
 
-      await UpdateCouponUsage(bookingDetails.coupon || "");
-      // Prepare data for success page
-      const successData = {
-        bookingId: res.id || new Date().getTime().toString(),
-        bookingDetails: bookingData,
-        contactPerson: {
-          name: "Thotakura Rahul Yadav",
-          phone1: "9618614860",
-          phone2: "8125770099",
-        },
-        venueAddress: "Reddy’s Colony, Road No-:3, Boduppal, Hyd. Telangana",
-        coordinates: "17.4933° N, 78.4974° E", // Approximate coordinates for Boduppal
-      };
+        // Update coupon usage if coupon exists
+        if (bookingDetails.coupon) {
+          await UpdateCouponUsage(bookingDetails.coupon);
+        }
 
-      setTimeout(() => {
-        setIsSubmitting(false);
+        // Prepare data for success page
+        const successData = {
+          bookingId: new Date().getTime().toString(),
+          bookingDetails: bookingData,
+          originalAmount: bookingDetails.amount,
+          contactPerson: {
+            name: "Thotakura Rahul Yadav",
+            phone1: "9618614860",
+            phone2: "8125770099",
+          },
+          venueAddress: "Reddy's Colony, Road No-3, Boduppal, Hyderabad, Telangana",
+          coordinates: "17.4933° N, 78.4974° E",
+        };
+
+        // Show success alert
         setAlert({
           open: true,
           message: "Booking submitted successfully! Redirecting...",
           severity: "success",
         });
 
-        // Navigate to success page with all data
+        // Navigate to success page after a short delay
         setTimeout(() => {
           navigate("/success", {
             state: {
@@ -207,7 +257,16 @@ export default function PaymentPage() {
             },
           });
         }, 1500);
-      }, 2000);
+
+      } catch (error) {
+        console.error("Error during booking:", error);
+        setAlert({
+          open: true,
+          message: "An unexpected error occurred. Please try again.",
+          severity: "error",
+        });
+        setIsSubmitting(false);
+      }
     } else {
       // Show validation error alert
       setAlert({
@@ -235,6 +294,8 @@ export default function PaymentPage() {
       </div>
     );
   }
+
+  const currentAccount = bankAccounts[currentAccountIndex];
 
   return (
     <>
@@ -301,7 +362,7 @@ export default function PaymentPage() {
                     COST BREAKDOWN
                   </h3>
                   <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                    {bookingDetails.timeSlots.map((slot, index) => (
+                    {bookingDetails.timeSlots.map((slot: any, index: number) => (
                       <div
                         key={index}
                         className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded"
@@ -453,7 +514,7 @@ export default function PaymentPage() {
                         errors.phone ? "border-red-500" : "border-gray-300"
                       }`}
                       placeholder="10-digit phone number"
-                      maxLength="10"
+                      maxLength={10}
                     />
                     {errors.phone && (
                       <p className="text-red-500 text-sm mt-1">
@@ -463,107 +524,215 @@ export default function PaymentPage() {
                   </div>
                 </div>
 
-                {/* QR Code and Payment Details - Side by Side */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* QR Code Section */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-100 p-5 rounded-xl border-2 border-dashed border-blue-200">
+                {/* Bank Account Slider */}
+                {bankAccounts.length > 0 && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-100 p-5 rounded-xl border-2 border-blue-200">
                     <h3 className="font-semibold text-gray-700 mb-4 text-center">
-                      Scan to Pay with PhonePe
+                      Choose Your Payment Method
                     </h3>
-                    <div className="flex justify-center mb-4">
-                      <img
-                        src="/scanner.png"
-                        alt="PhonePe QR Code"
-                        className="w-48 h-48 border-2 border-white shadow-lg rounded-lg"
-                      />
-                    </div>
-                    <div className="text-center bg-white py-2 rounded-lg border">
-                      <span className="text-lg font-bold text-blue-700">
-                        ₹{amountToPay}
-                      </span>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {paymentOption === "full"
-                          ? "Full Amount"
-                          : "Partial Amount (50%)"}
+                    
+                    {/* Slider Header with Dots */}
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-medium text-gray-800">
+                        Payment Account {currentAccountIndex + 1} of {bankAccounts.length}
+                      </h4>
+                      
+                      {/* Dots Indicator */}
+                      <div className="flex space-x-2">
+                        {bankAccounts.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={() => goToAccount(index)}
+                            className={`w-2 h-2 rounded-full transition-colors ${
+                              currentAccountIndex === index
+                                ? "bg-blue-600"
+                                : "bg-gray-300"
+                            }`}
+                            aria-label={`Go to account ${index + 1}`}
+                          />
+                        ))}
                       </div>
                     </div>
-                    <p className="text-xs text-gray-600 text-center mt-3">
-                      Scan this QR code with PhonePe app to make payment
-                    </p>
+
+                    {/* Slider Container */}
+                    <div className="relative">
+                      {/* Navigation Arrows */}
+                      {bankAccounts.length > 1 && (
+                        <>
+                          <button
+                            onClick={prevAccount}
+                            className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-4 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-50 transition-colors"
+                            aria-label="Previous account"
+                          >
+                            <ChevronLeft className="w-5 h-5 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={nextAccount}
+                            className="absolute right-0 top-1/2 transform -translate-y-1/2 translate-x-4 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-50 transition-colors"
+                            aria-label="Next account"
+                          >
+                            <ChevronRight className="w-5 h-5 text-gray-600" />
+                          </button>
+                        </>
+                      )}
+
+                      {/* Account Details Card */}
+                      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        {/* QR Code Scanner Image */}
+                        {currentAccount.Scanner && (
+                          <div className="mb-6">
+                            <div className="text-center font-medium text-gray-700 mb-3">
+                              Method 1: Scan QR Code
+                            </div>
+                            <div className="flex justify-center">
+                              <div className="relative">
+                                <img
+                                  src={currentAccount.Scanner}
+                                  alt="Payment QR Code"
+                                  className="w-56 h-56 border-4 border-white shadow-lg rounded-lg object-contain"
+                                />
+                                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
+                                  QR Code
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Account Details Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                          {/* UPI Phone Number */}
+                          <div className="bg-blue-50 p-3 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-xs text-blue-600 mb-1">Method 2: UPI Phone Number</div>
+                                <div className="font-semibold text-gray-800">
+                                  {currentAccount.Phone.trim()}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(currentAccount.Phone.trim(), 'phone')}
+                                className="ml-2 p-1 hover:bg-blue-100 rounded"
+                              >
+                                {copiedField === 'phone' ? (
+                                  <Check className="w-4 h-4 text-green-600" />
+                                ) : (
+                                  <Copy className="w-4 h-4 text-blue-500" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* UPI ID */}
+                          <div className="bg-purple-50 p-3 rounded-lg md:col-span-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-xs text-purple-600 mb-1">Method 3: UPI ID</div>
+                                <div className="font-semibold text-gray-800">
+                                  {currentAccount.Upi.trim()}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(currentAccount.Upi.trim(), 'upi')}
+                                className="ml-2 p-1 hover:bg-purple-100 rounded"
+                              >
+                                {copiedField === 'upi' ? (
+                                  <Check className="w-4 h-4 text-green-600" />
+                                ) : (
+                                  <Copy className="w-4 h-4 text-purple-500" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Amount Display */}
+                        <div className="text-center bg-gradient-to-r from-blue-100 to-indigo-100 py-3 rounded-lg border border-blue-200">
+                          <div className="text-lg font-bold text-blue-700 mb-1">
+                            ₹{amountToPay}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            Transfer this exact amount
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Verification Details */}
+                <div className="space-y-6">
+                  {/* UTR Number */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2">
+                      Payment UTR Number *
+                    </label>
+                    <input
+                      type="text"
+                      name="utrNumber"
+                      value={formData.utrNumber}
+                      onChange={handleInputChange}
+                      className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.utrNumber
+                          ? "border-red-500"
+                          : "border-gray-300"
+                      }`}
+                      placeholder="Enter 12-digit UTR number from your payment"
+                      maxLength={12}
+                    />
+                    {errors.utrNumber && (
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.utrNumber}
+                      </p>
+                    )}
+                    <div className="flex items-center mt-2 text-xs text-gray-500">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                      UTR number is 12 digits and found in your payment receipt
+                    </div>
                   </div>
 
-                  {/* Payment Verification Details */}
-                  <div className="space-y-6">
-                    {/* UTR Number */}
-                    <div>
-                      <label className="block font-semibold text-gray-700 mb-2">
-                        UTR Number *
-                      </label>
+                  {/* Payment Screenshot */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2">
+                      Payment Screenshot *
+                    </label>
+                    <div
+                      className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
+                        errors.paymentScreenshot
+                          ? "border-red-500 bg-red-50"
+                          : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                      }`}
+                    >
                       <input
-                        type="text"
-                        name="utrNumber"
-                        value={formData.utrNumber}
+                        type="file"
+                        name="paymentScreenshot"
                         onChange={handleInputChange}
-                        className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          errors.utrNumber
-                            ? "border-red-500"
-                            : "border-gray-300"
-                        }`}
-                        placeholder="Enter 12-digit UTR number"
-                        maxLength="12"
+                        accept="image/*"
+                        className="hidden"
+                        id="paymentScreenshot"
                       />
-                      {errors.utrNumber && (
-                        <p className="text-red-500 text-sm mt-1">
-                          {errors.utrNumber}
-                        </p>
-                      )}
-                      <div className="flex items-center mt-2 text-xs text-gray-500">
-                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                        UTR number is 12 digits and found in payment receipt
-                      </div>
-                    </div>
-
-                    {/* Payment Screenshot */}
-                    <div>
-                      <label className="block font-semibold text-gray-700 mb-2">
-                        Payment Screenshot *
-                      </label>
-                      <div
-                        className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
-                          errors.paymentScreenshot
-                            ? "border-red-500 bg-red-50"
-                            : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
-                        }`}
+                      <label
+                        htmlFor="paymentScreenshot"
+                        className="cursor-pointer"
                       >
-                        <input
-                          type="file"
-                          name="paymentScreenshot"
-                          onChange={handleInputChange}
-                          accept="image/*"
-                          className="hidden"
-                          id="paymentScreenshot"
-                        />
-                        <label
-                          htmlFor="paymentScreenshot"
-                          className="cursor-pointer"
-                        >
-                          <div className="text-3xl mb-2">📸</div>
-                          <div className="text-sm font-medium text-gray-700">
-                            {formData.paymentScreenshot
-                              ? formData.paymentScreenshot.name
-                              : "Click to upload screenshot"}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Upload screenshot of successful payment
-                          </div>
-                        </label>
-                      </div>
-                      {errors.paymentScreenshot && (
-                        <p className="text-red-500 text-sm mt-2 text-center">
-                          {errors.paymentScreenshot}
-                        </p>
-                      )}
+                        <div className="text-3xl mb-2">📸</div>
+                        <div className="text-sm font-medium text-gray-700">
+                          {formData.paymentScreenshot
+                            ? formData.paymentScreenshot.name
+                            : "Click to upload payment screenshot"}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Upload screenshot of successful payment with UTR visible
+                        </div>
+                      </label>
                     </div>
+                    {errors.paymentScreenshot && (
+                      <p className="text-red-500 text-sm mt-2 text-center">
+                        {errors.paymentScreenshot}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -575,24 +744,23 @@ export default function PaymentPage() {
                   </h4>
                   <ul className="text-xs text-yellow-700 space-y-1">
                     <li>
-                      • Booking will be confirmed only after payment
-                      verification
+                      • Booking will be confirmed only after payment verification
                     </li>
                     <li>
-                      •{" "}
-                      {paymentOption === "full"
-                        ? "Full payment of ₹" +
-                          fullAmount +
-                          " is required for confirmation"
-                        : "Partial payment of ₹" +
-                          partialAmount +
-                          " is required, remaining ₹" +
-                          (fullAmount - partialAmount) +
-                          " to be paid at venue"}
+                      • {paymentOption === "full"
+                        ? `Full payment of ₹${fullAmount} is required for confirmation`
+                        : `Partial payment of ₹${partialAmount} is required, remaining ₹${
+                            fullAmount - partialAmount
+                          } to be paid at venue`}
                     </li>
                     <li>
-                      • Keep your UTR number and screenshot ready before
-                      submitting
+                      • Use any of the 3 payment methods shown above
+                    </li>
+                    <li>
+                      • Transfer the exact amount shown
+                    </li>
+                    <li>
+                      • Keep your UTR number and screenshot ready before submitting
                     </li>
                     <li>• For issues, contact: +91-9876543210</li>
                   </ul>
@@ -605,7 +773,7 @@ export default function PaymentPage() {
                     onClick={() => navigate(-1)}
                     className="flex-1 py-4 border-2 border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition transform hover:scale-105"
                   >
-                    ← Back to Booking
+                    ← Back
                   </button>
                   <button
                     type="submit"
@@ -622,7 +790,7 @@ export default function PaymentPage() {
                         Processing...
                       </div>
                     ) : (
-                      `Submit Payment Details`
+                      `Submit Payment`
                     )}
                   </button>
                 </div>
