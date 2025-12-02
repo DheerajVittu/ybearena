@@ -8,5 +8,8 @@ export type BookingType = {
     UTR:string;
     PaymentImage:string;
     Amount:number;
+    PaymentType:string;
+    BalanceAmount:number;
+    CouponCode:string;
     Status:string;
 }

@@ -1,4 +1,8 @@
-import { CreateBooking } from "@/booking/booking";
+import {
+  ApplyCoupon,
+  CreateBooking,
+  UpdateCouponUsage,
+} from "@/booking/booking";
 import type { BookingType } from "@/utils/bookingType";
 import { supabase } from "@/utils/supabase";
 import { useState, useEffect } from "react";
@@ -9,7 +13,7 @@ export default function PaymentPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const bookingDetails = location.state?.bookingDetails;
-
+  const [amountToPay, setAmountToPay] = useState(0);
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -18,10 +22,12 @@ export default function PaymentPage() {
   });
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // New state for payment option
-  const [paymentOption, setPaymentOption] = useState<"full" | "partial">("full");
-  
+  const [paymentOption, setPaymentOption] = useState<"full" | "partial">(
+    "full"
+  );
+
   // Alert state
   const [alert, setAlert] = useState({
     open: false,
@@ -32,7 +38,10 @@ export default function PaymentPage() {
   // Calculate amounts
   const fullAmount = bookingDetails?.amount || 0;
   const partialAmount = Math.round(fullAmount * 0.5);
-  const amountToPay = paymentOption === "full" ? fullAmount : partialAmount;
+  useEffect(() => {
+    const amountPay = paymentOption === "full" ? fullAmount : partialAmount;
+    setAmountToPay(amountPay);
+  }, [fullAmount, partialAmount]);
 
   // Redirect if no booking details
   useEffect(() => {
@@ -113,8 +122,6 @@ export default function PaymentPage() {
     e.preventDefault();
     if (validateForm()) {
       setIsSubmitting(true);
-      
-      // const file = formData.paymentScreenshot;
 
       // Upload payment screenshot
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -148,25 +155,28 @@ export default function PaymentPage() {
         EndTime: bookingDetails.endTime,
         UTR: formData.utrNumber,
         PaymentImage: publicUrl,
-        Amount: bookingDetails.amount,
-        AmountPaid: amountToPay,
-        PaymentType: paymentOption === "full" ? "Full Payment" : "Partial Payment (50%)",
-        RemainingAmount: paymentOption === "full" ? 0 : bookingDetails.amount - amountToPay,
+        Amount: amountToPay,
+        CouponCode: bookingDetails.coupon || "",
+        PaymentType:
+          paymentOption === "full" ? "Full Payment" : "Partial Payment (50%)",
+        BalanceAmount:
+          paymentOption === "full" ? 0 : bookingDetails.amount - amountToPay,
         Status: paymentOption === "full" ? "Confirmed" : "Partially Paid",
       };
-      
+
       const res = await CreateBooking(bookingData);
 
-      if (res === "Something went wrong") {
+      if (res !== "Success") {
         setIsSubmitting(false);
         setAlert({
           open: true,
-          message: "Failed to create booking. Please try again.",
+          message: res,
           severity: "error",
         });
         return;
       }
 
+      await UpdateCouponUsage(bookingDetails.coupon || "");
       // Prepare data for success page
       const successData = {
         bookingId: res.id || new Date().getTime().toString(),
@@ -174,10 +184,10 @@ export default function PaymentPage() {
         contactPerson: {
           name: "Thotakura Rahul Yadav",
           phone1: "9618614860",
-          phone2: "8125770099"
+          phone2: "8125770099",
         },
         venueAddress: "Reddy’s Colony, Road No-:3, Boduppal, Hyd. Telangana",
-        coordinates: "17.4933° N, 78.4974° E" // Approximate coordinates for Boduppal
+        coordinates: "17.4933° N, 78.4974° E", // Approximate coordinates for Boduppal
       };
 
       setTimeout(() => {
@@ -187,14 +197,14 @@ export default function PaymentPage() {
           message: "Booking submitted successfully! Redirecting...",
           severity: "success",
         });
-        
+
         // Navigate to success page with all data
         setTimeout(() => {
-          navigate("/success", { 
-            state: { 
+          navigate("/success", {
+            state: {
               booking: successData,
-              fromPayment: true 
-            } 
+              fromPayment: true,
+            },
           });
         }, 1500);
       }, 2000);
@@ -233,13 +243,13 @@ export default function PaymentPage() {
         open={alert.open}
         autoHideDuration={6000}
         onClose={handleAlertClose}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <Alert 
-          onClose={handleAlertClose} 
+        <Alert
+          onClose={handleAlertClose}
           severity={alert.severity}
           variant="filled"
-          sx={{ width: '100%' }}
+          sx={{ width: "100%" }}
         >
           {alert.message}
         </Alert>
@@ -318,29 +328,49 @@ export default function PaymentPage() {
                     PAYMENT OPTIONS
                   </h3>
                   <div className="space-y-3">
-                    <div 
-                      className={`p-3 border-2 rounded-xl cursor-pointer transition-all ${paymentOption === "full" ? "border-green-500 bg-green-50" : "border-gray-200 hover:border-gray-300"}`}
+                    <div
+                      className={`p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                        paymentOption === "full"
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
                       onClick={() => setPaymentOption("full")}
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-semibold text-gray-800">Pay Full Amount</div>
-                          <div className="text-xs text-gray-600">Pay 100% now and confirm booking</div>
+                          <div className="font-semibold text-gray-800">
+                            Pay Full Amount
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            Pay 100% now and confirm booking
+                          </div>
                         </div>
-                        <div className="font-bold text-green-700">₹{fullAmount}</div>
+                        <div className="font-bold text-green-700">
+                          ₹{fullAmount}
+                        </div>
                       </div>
                     </div>
-                    
-                    <div 
-                      className={`p-3 border-2 rounded-xl cursor-pointer transition-all ${paymentOption === "partial" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
+
+                    <div
+                      className={`p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                        paymentOption === "partial"
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
                       onClick={() => setPaymentOption("partial")}
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-semibold text-gray-800">Pay Partial Amount</div>
-                          <div className="text-xs text-gray-600">Pay 50% now, rest at venue</div>
+                          <div className="font-semibold text-gray-800">
+                            Pay Partial Amount
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            Pay 50% now, rest at venue
+                          </div>
                         </div>
-                        <div className="font-bold text-blue-700">₹{partialAmount}</div>
+                        <div className="font-bold text-blue-700">
+                          ₹{partialAmount}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -363,7 +393,9 @@ export default function PaymentPage() {
                 <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-4 rounded-xl text-white">
                   <div className="flex justify-between items-center">
                     <div>
-                      <div className="text-sm opacity-90">AMOUNT TO PAY NOW</div>
+                      <div className="text-sm opacity-90">
+                        AMOUNT TO PAY NOW
+                      </div>
                       <div className="text-xl font-bold">₹{amountToPay}</div>
                       {paymentOption === "partial" && (
                         <div className="text-xs opacity-80 mt-1">
@@ -424,7 +456,9 @@ export default function PaymentPage() {
                       maxLength="10"
                     />
                     {errors.phone && (
-                      <p className="text-red-500 text-sm mt-1">{errors.phone}</p>
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.phone}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -448,7 +482,9 @@ export default function PaymentPage() {
                         ₹{amountToPay}
                       </span>
                       <div className="text-xs text-gray-500 mt-1">
-                        {paymentOption === "full" ? "Full Amount" : "Partial Amount (50%)"}
+                        {paymentOption === "full"
+                          ? "Full Amount"
+                          : "Partial Amount (50%)"}
                       </div>
                     </div>
                     <p className="text-xs text-gray-600 text-center mt-3">
@@ -469,7 +505,9 @@ export default function PaymentPage() {
                         value={formData.utrNumber}
                         onChange={handleInputChange}
                         className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          errors.utrNumber ? "border-red-500" : "border-gray-300"
+                          errors.utrNumber
+                            ? "border-red-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="Enter 12-digit UTR number"
                         maxLength="12"
@@ -537,15 +575,24 @@ export default function PaymentPage() {
                   </h4>
                   <ul className="text-xs text-yellow-700 space-y-1">
                     <li>
-                      • Booking will be confirmed only after payment verification
+                      • Booking will be confirmed only after payment
+                      verification
                     </li>
                     <li>
-                      • {paymentOption === "full" 
-                        ? "Full payment of ₹" + fullAmount + " is required for confirmation" 
-                        : "Partial payment of ₹" + partialAmount + " is required, remaining ₹" + (fullAmount - partialAmount) + " to be paid at venue"}
+                      •{" "}
+                      {paymentOption === "full"
+                        ? "Full payment of ₹" +
+                          fullAmount +
+                          " is required for confirmation"
+                        : "Partial payment of ₹" +
+                          partialAmount +
+                          " is required, remaining ₹" +
+                          (fullAmount - partialAmount) +
+                          " to be paid at venue"}
                     </li>
                     <li>
-                      • Keep your UTR number and screenshot ready before submitting
+                      • Keep your UTR number and screenshot ready before
+                      submitting
                     </li>
                     <li>• For issues, contact: +91-9876543210</li>
                   </ul>
