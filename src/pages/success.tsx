@@ -96,7 +96,7 @@ export default function SuccessPage() {
                 
                 <div className="bg-yellow-50 p-4 rounded-xl">
                   <div className="text-xs text-yellow-600 font-semibold mb-1">BOOKING STATUS</div>
-                  <div className="text-lg font-bold text-gray-800">{bookingDetails.Status}</div>
+                  <div className="text-lg font-bold text-gray-800">Success</div>
                   <div className="text-sm text-gray-600">UTR: {bookingDetails.UTR}</div>
                 </div>
               </div>
