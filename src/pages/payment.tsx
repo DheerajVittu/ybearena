@@ -206,7 +206,7 @@ export default function PaymentPage() {
             paymentOption === "full" ? "Full Payment" : "Partial Payment (50%)",
           BalanceAmount:
             paymentOption === "full" ? 0 : bookingDetails.amount - amountToPay,
-          Status: paymentOption === "full" ? "Confirmed" : "Partially Paid",
+          Status: "pending",
         };
 
         const res = await CreateBooking(bookingData);
