@@ -24,7 +24,7 @@ export default function PaymentPage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // State for bank accounts
   const [bankAccounts, setBankAccounts] = useState<BankAccountType[]>([]);
   const [currentAccountIndex, setCurrentAccountIndex] = useState(0);
@@ -49,7 +49,7 @@ export default function PaymentPage() {
       const accounts = await GetBankAccounts();
       setBankAccounts(accounts);
     };
-    
+
     fetchBankAccounts();
   }, []);
 
@@ -113,13 +113,13 @@ export default function PaymentPage() {
 
   // Slider navigation functions
   const nextAccount = () => {
-    setCurrentAccountIndex((prev) => 
+    setCurrentAccountIndex((prev) =>
       prev === bankAccounts.length - 1 ? 0 : prev + 1
     );
   };
 
   const prevAccount = () => {
-    setCurrentAccountIndex((prev) => 
+    setCurrentAccountIndex((prev) =>
       prev === 0 ? bankAccounts.length - 1 : prev - 1
     );
   };
@@ -237,7 +237,8 @@ export default function PaymentPage() {
             phone1: "9618614860",
             phone2: "8125770099",
           },
-          venueAddress: "Reddy's Colony, Road No-3, Boduppal, Hyderabad, Telangana",
+          venueAddress:
+            "Reddy's Colony, Road No-3, Boduppal, Hyderabad, Telangana",
           coordinates: "17.4933° N, 78.4974° E",
         };
 
@@ -257,7 +258,6 @@ export default function PaymentPage() {
             },
           });
         }, 1500);
-
       } catch (error) {
         console.error("Error during booking:", error);
         setAlert({
@@ -362,24 +362,26 @@ export default function PaymentPage() {
                     COST BREAKDOWN
                   </h3>
                   <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                    {bookingDetails.timeSlots.map((slot: any, index: number) => (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-700">
-                            {slot.period}
+                    {bookingDetails.timeSlots.map(
+                      (slot: any, index: number) => (
+                        <div
+                          key={index}
+                          className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded"
+                        >
+                          <div>
+                            <div className="font-medium text-gray-700">
+                              {slot.period}
+                            </div>
+                            <div className="text-gray-500">
+                              {slot.hours} hrs × ₹{slot.rate}/hr
+                            </div>
                           </div>
-                          <div className="text-gray-500">
-                            {slot.hours} hrs × ₹{slot.rate}/hr
+                          <div className="font-bold text-blue-700">
+                            ₹{slot.amount}
                           </div>
                         </div>
-                        <div className="font-bold text-blue-700">
-                          ₹{slot.amount}
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    )}
                   </div>
                 </div>
 
@@ -530,13 +532,14 @@ export default function PaymentPage() {
                     <h3 className="font-semibold text-gray-700 mb-4 text-center">
                       Choose Your Payment Method
                     </h3>
-                    
+
                     {/* Slider Header with Dots */}
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="font-medium text-gray-800">
-                        Payment Account {currentAccountIndex + 1} of {bankAccounts.length}
+                        Payment Account {currentAccountIndex + 1} of{" "}
+                        {bankAccounts.length}
                       </h4>
-                      
+
                       {/* Dots Indicator */}
                       <div className="flex space-x-2">
                         {bankAccounts.map((_, index) => (
@@ -605,17 +608,24 @@ export default function PaymentPage() {
                           <div className="bg-blue-50 p-3 rounded-lg">
                             <div className="flex items-center justify-between">
                               <div>
-                                <div className="text-xs text-blue-600 mb-1">Method 2: UPI Phone Number</div>
+                                <div className="text-xs text-blue-600 mb-1">
+                                  Method 2: UPI Phone Number
+                                </div>
                                 <div className="font-semibold text-gray-800">
                                   {currentAccount.Phone.trim()}
                                 </div>
                               </div>
                               <button
                                 type="button"
-                                onClick={() => copyToClipboard(currentAccount.Phone.trim(), 'phone')}
+                                onClick={() =>
+                                  copyToClipboard(
+                                    currentAccount.Phone.trim(),
+                                    "phone"
+                                  )
+                                }
                                 className="ml-2 p-1 hover:bg-blue-100 rounded"
                               >
-                                {copiedField === 'phone' ? (
+                                {copiedField === "phone" ? (
                                   <Check className="w-4 h-4 text-green-600" />
                                 ) : (
                                   <Copy className="w-4 h-4 text-blue-500" />
@@ -628,17 +638,24 @@ export default function PaymentPage() {
                           <div className="bg-purple-50 p-3 rounded-lg md:col-span-2">
                             <div className="flex items-center justify-between">
                               <div>
-                                <div className="text-xs text-purple-600 mb-1">Method 3: UPI ID</div>
+                                <div className="text-xs text-purple-600 mb-1">
+                                  Method 3: UPI ID
+                                </div>
                                 <div className="font-semibold text-gray-800">
                                   {currentAccount.Upi.trim()}
                                 </div>
                               </div>
                               <button
                                 type="button"
-                                onClick={() => copyToClipboard(currentAccount.Upi.trim(), 'upi')}
+                                onClick={() =>
+                                  copyToClipboard(
+                                    currentAccount.Upi.trim(),
+                                    "upi"
+                                  )
+                                }
                                 className="ml-2 p-1 hover:bg-purple-100 rounded"
                               >
-                                {copiedField === 'upi' ? (
+                                {copiedField === "upi" ? (
                                   <Check className="w-4 h-4 text-green-600" />
                                 ) : (
                                   <Copy className="w-4 h-4 text-purple-500" />
@@ -675,9 +692,7 @@ export default function PaymentPage() {
                       value={formData.utrNumber}
                       onChange={handleInputChange}
                       className={`w-full p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.utrNumber
-                          ? "border-red-500"
-                          : "border-gray-300"
+                        errors.utrNumber ? "border-red-500" : "border-gray-300"
                       }`}
                       placeholder="Enter 12-digit UTR number from your payment"
                       maxLength={12}
@@ -724,7 +739,8 @@ export default function PaymentPage() {
                             : "Click to upload payment screenshot"}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          Upload screenshot of successful payment with UTR visible
+                          Upload screenshot of successful payment with UTR
+                          visible
                         </div>
                       </label>
                     </div>
@@ -744,23 +760,22 @@ export default function PaymentPage() {
                   </h4>
                   <ul className="text-xs text-yellow-700 space-y-1">
                     <li>
-                      • Booking will be confirmed only after payment verification
+                      • Booking will be confirmed only after payment
+                      verification
                     </li>
                     <li>
-                      • {paymentOption === "full"
+                      •{" "}
+                      {paymentOption === "full"
                         ? `Full payment of ₹${fullAmount} is required for confirmation`
                         : `Partial payment of ₹${partialAmount} is required, remaining ₹${
                             fullAmount - partialAmount
                           } to be paid at venue`}
                     </li>
+                    <li>• Use any of the 3 payment methods shown above</li>
+                    <li>• Transfer the exact amount shown</li>
                     <li>
-                      • Use any of the 3 payment methods shown above
-                    </li>
-                    <li>
-                      • Transfer the exact amount shown
-                    </li>
-                    <li>
-                      • Keep your UTR number and screenshot ready before submitting
+                      • Keep your UTR number and screenshot ready before
+                      submitting
                     </li>
                     <li>• For issues, contact: +91-9876543210</li>
                   </ul>
