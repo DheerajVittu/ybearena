@@ -212,7 +212,7 @@ export default function PaymentPage() {
         const res = await CreateBooking(bookingData);
 
         // Check if res is "Booking created successfully" string
-        if (res !== "Booking created successfully") {
+        if (res !== "Success") {
           setIsSubmitting(false);
           setAlert({
             open: true,
