@@ -1009,7 +1009,7 @@ export default function MainPage() {
                     className="bg-indigo-600 text-white text-sm px-3 py-1.5 rounded-lg
                        hover:bg-indigo-700 active:scale-95 transition-all"
                   >
-                    Apply
+                    Use
                   </button>
                 </div>
               ))}
