@@ -536,7 +536,7 @@ export default function MainPage() {
 
       <div className="flex md:flex-row flex-col-reverse">
         {/* MAIN CONTENT */}
-        <main className="flex-1 container mx-auto p-4">
+        <main className="flex-1 container mx-auto md:w-3/4 p-4">
           <div className="max-w-4xl mx-auto">
             {/* PRICING INFORMATION */}
             <div className="mb-6">
@@ -988,14 +988,29 @@ export default function MainPage() {
             </div>
           </div>
         </main>
-        <div className="flex flex-col gap-3">
-          <span>Coupon Codes</span>
-          <div className="flex md:flex-col flex-row overflow-x-auto">
+        <div className="flex flex-col gap-3 md:w-1/4">
+          <span className="text-lg font-semibold">Coupon Codes</span>
+
+          <div className="flex md:flex-col flex-row gap-3 overflow-x-auto p-1">
             {coupons &&
               coupons.map((coup) => (
-                <div className="flex flex-row gap-4">
-                  <span>{coup.Percentage}% off</span>
-                  <button onClick={() => setCoupon(coup.Name)}>Apply</button>
+                <div
+                  key={coup.Name}
+                  className="flex items-center justify-between min-w-[180px] md:min-w-0
+                     bg-white shadow-md rounded-xl px-4 gap-3 py-3 border
+                     hover:shadow-lg transition-all duration-200"
+                >
+                  <span className="text-sm font-medium text-gray-700">
+                    {coup.Percentage}% off
+                  </span>
+
+                  <button
+                    onClick={() => setCoupon(coup.Name)}
+                    className="bg-indigo-600 text-white text-sm px-3 py-1.5 rounded-lg
+                       hover:bg-indigo-700 active:scale-95 transition-all"
+                  >
+                    Apply
+                  </button>
                 </div>
               ))}
           </div>
