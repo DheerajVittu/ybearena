@@ -1,5 +1,5 @@
-import { ApplyCoupon, GetBookings } from "@/booking/booking";
-import type { BookingType } from "@/utils/bookingType";
+import { ApplyCoupon, GetBookings, GetCoupons } from "@/booking/booking";
+import type { BookingType, CouponType } from "@/utils/bookingType";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -19,7 +19,7 @@ export default function MainPage() {
   const [bookings, setBookings] = useState<BookingType[]>([]);
   const startDropdownRef = useRef<HTMLDivElement>(null);
   const endDropdownRef = useRef<HTMLDivElement>(null);
-  
+
   // Alert state for MUI Snackbar
   const [alert, setAlert] = useState({
     open: false,
@@ -34,18 +34,20 @@ export default function MainPage() {
     };
     fetchBookings();
   }, []);
-
+  const [coupons, setCoupons] = useState<CouponType[]>();
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [amount, setAmount] = useState(0);
   const [coupon, setCoupon] = useState("");
-  const [timeSlots, setTimeSlots] = useState<Array<{
-    period: string;
-    hours: string;
-    rate: number;
-    amount: number;
-  }>>([]);
+  const [timeSlots, setTimeSlots] = useState<
+    Array<{
+      period: string;
+      hours: string;
+      rate: number;
+      amount: number;
+    }>
+  >([]);
   const [errors, setErrors] = useState({
     date: "",
     startTime: "",
@@ -260,132 +262,139 @@ export default function MainPage() {
     setCoupon(e.target.value);
   };
 
+  useEffect(() => {
+    async function fetchCoupons() {
+      const coupons = await GetCoupons();
+      setCoupons(coupons || []);
+    }
+    fetchCoupons();
+  }, []);
   // Calculate amount and time slots breakdown
-useEffect(() => {
-  if (
-    startTime &&
-    endTime &&
-    errors.startTime === "" &&
-    errors.endTime === "" &&
-    errors.date === ""
-  ) {
-    const isOverlapping = bookings
-      .filter((slot) => slot.SlotDate === date)
-      .some((slot) => {
-        const slotStart = slot.StartTime;
-        const slotEnd = slot.EndTime;
+  useEffect(() => {
+    if (
+      startTime &&
+      endTime &&
+      errors.startTime === "" &&
+      errors.endTime === "" &&
+      errors.date === ""
+    ) {
+      const isOverlapping = bookings
+        .filter((slot) => slot.SlotDate === date)
+        .some((slot) => {
+          const slotStart = slot.StartTime;
+          const slotEnd = slot.EndTime;
 
-        const startMinutes = timeToMinutes(startTime);
-        const endMinutes = timeToMinutes(endTime);
-        const slotStartMinutes = timeToMinutes(slotStart);
-        const slotEndMinutes = timeToMinutes(slotEnd);
+          const startMinutes = timeToMinutes(startTime);
+          const endMinutes = timeToMinutes(endTime);
+          const slotStartMinutes = timeToMinutes(slotStart);
+          const slotEndMinutes = timeToMinutes(slotEnd);
 
-        const adjustedEndMinutes = endTime === "00:00" ? 24 * 60 : endMinutes;
-        const adjustedSlotEndMinutes =
-          slotEnd === "00:00" ? 24 * 60 : slotEndMinutes;
+          const adjustedEndMinutes = endTime === "00:00" ? 24 * 60 : endMinutes;
+          const adjustedSlotEndMinutes =
+            slotEnd === "00:00" ? 24 * 60 : slotEndMinutes;
 
-        return (
-          startMinutes < adjustedSlotEndMinutes &&
-          adjustedEndMinutes > slotStartMinutes
+          return (
+            startMinutes < adjustedSlotEndMinutes &&
+            adjustedEndMinutes > slotStartMinutes
+          );
+        });
+
+      if (isOverlapping) {
+        setAlert({
+          open: true,
+          message: "Selected time overlaps with existing bookings",
+          severity: "error",
+        });
+        setAmount(0);
+        setTimeSlots([]);
+        return;
+      }
+
+      const startDateTime = new Date(`2000-01-01T${startTime}`);
+      let endDateTime = new Date(`2000-01-01T${endTime}`);
+
+      if (endTime === "00:00") {
+        endDateTime = new Date(`2000-01-02T${endTime}`);
+      }
+
+      let totalAmount = 0;
+      const slots: Array<{
+        period: string;
+        hours: string;
+        rate: number;
+        amount: number;
+      }> = [];
+      let currentSlotStart = new Date(startDateTime);
+
+      while (currentSlotStart < endDateTime) {
+        const currentHour = currentSlotStart.getHours();
+        const currentPrice = getPriceForTime(
+          `${currentHour.toString().padStart(2, "0")}:00`,
+          date
         );
-      });
 
-    if (isOverlapping) {
-      setAlert({
-        open: true,
-        message: "Selected time overlaps with existing bookings",
-        severity: "error",
-      });
+        let currentSlotEnd = new Date(currentSlotStart);
+        const isWeekendDay = isWeekend(date);
+        let nextPeriodHour: number;
+
+        if (isWeekendDay) {
+          if (currentHour >= 6 && currentHour < 12) {
+            nextPeriodHour = 12;
+          } else if (currentHour >= 12 && currentHour < 18) {
+            nextPeriodHour = 18;
+          } else {
+            currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
+            nextPeriodHour = 6;
+          }
+        } else {
+          if (currentHour >= 6 && currentHour < 12) {
+            nextPeriodHour = 12;
+          } else if (currentHour >= 12 && currentHour < 18) {
+            nextPeriodHour = 18;
+          } else {
+            currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
+            nextPeriodHour = 6;
+          }
+        }
+
+        if (currentHour < 6 && currentHour >= 0) {
+          currentSlotEnd.setHours(6, 0, 0, 0);
+        } else if (currentSlotEnd.getHours() !== nextPeriodHour) {
+          currentSlotEnd.setHours(nextPeriodHour, 0, 0, 0);
+        }
+
+        if (currentSlotEnd > endDateTime) {
+          currentSlotEnd = new Date(endDateTime);
+        }
+
+        // FIX: Get time values as numbers before arithmetic
+        const slotStartTime = currentSlotStart.getTime();
+        const slotEndTime = currentSlotEnd.getTime();
+        const slotHours = (slotEndTime - slotStartTime) / (1000 * 60 * 60);
+        const slotAmount = slotHours * currentPrice;
+
+        if (slotHours > 0) {
+          slots.push({
+            period: `${formatTime(currentSlotStart)} - ${formatTime(
+              currentSlotEnd
+            )}`,
+            hours: slotHours.toFixed(2),
+            rate: currentPrice,
+            amount: Math.round(slotAmount),
+          });
+          totalAmount += slotAmount;
+        }
+
+        currentSlotStart = currentSlotEnd;
+      }
+
+      setTimeSlots(slots);
+      setAmount(Math.round(totalAmount));
+    } else {
       setAmount(0);
       setTimeSlots([]);
-      return;
     }
-
-    const startDateTime = new Date(`2000-01-01T${startTime}`);
-    let endDateTime = new Date(`2000-01-01T${endTime}`);
-
-    if (endTime === "00:00") {
-      endDateTime = new Date(`2000-01-02T${endTime}`);
-    }
-
-    let totalAmount = 0;
-    const slots: Array<{
-      period: string;
-      hours: string;
-      rate: number;
-      amount: number;
-    }> = [];
-    let currentSlotStart = new Date(startDateTime);
-
-    while (currentSlotStart < endDateTime) {
-      const currentHour = currentSlotStart.getHours();
-      const currentPrice = getPriceForTime(
-        `${currentHour.toString().padStart(2, "0")}:00`,
-        date
-      );
-
-      let currentSlotEnd = new Date(currentSlotStart);
-      const isWeekendDay = isWeekend(date);
-      let nextPeriodHour: number;
-
-      if (isWeekendDay) {
-        if (currentHour >= 6 && currentHour < 12) {
-          nextPeriodHour = 12;
-        } else if (currentHour >= 12 && currentHour < 18) {
-          nextPeriodHour = 18;
-        } else {
-          currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
-          nextPeriodHour = 6;
-        }
-      } else {
-        if (currentHour >= 6 && currentHour < 12) {
-          nextPeriodHour = 12;
-        } else if (currentHour >= 12 && currentHour < 18) {
-          nextPeriodHour = 18;
-        } else {
-          currentSlotEnd.setDate(currentSlotEnd.getDate() + 1);
-          nextPeriodHour = 6;
-        }
-      }
-
-      if (currentHour < 6 && currentHour >= 0) {
-        currentSlotEnd.setHours(6, 0, 0, 0);
-      } else if (currentSlotEnd.getHours() !== nextPeriodHour) {
-        currentSlotEnd.setHours(nextPeriodHour, 0, 0, 0);
-      }
-
-      if (currentSlotEnd > endDateTime) {
-        currentSlotEnd = new Date(endDateTime);
-      }
-
-      // FIX: Get time values as numbers before arithmetic
-      const slotStartTime = currentSlotStart.getTime();
-      const slotEndTime = currentSlotEnd.getTime();
-      const slotHours = (slotEndTime - slotStartTime) / (1000 * 60 * 60);
-      const slotAmount = slotHours * currentPrice;
-
-      if (slotHours > 0) {
-        slots.push({
-          period: `${formatTime(currentSlotStart)} - ${formatTime(
-            currentSlotEnd
-          )}`,
-          hours: slotHours.toFixed(2),
-          rate: currentPrice,
-          amount: Math.round(slotAmount),
-        });
-        totalAmount += slotAmount;
-      }
-
-      currentSlotStart = currentSlotEnd;
-    }
-
-    setTimeSlots(slots);
-    setAmount(Math.round(totalAmount));
-  } else {
-    setAmount(0);
-    setTimeSlots([]);
-  }
-}, [startTime, endTime, date, errors, bookings]);
+  }, [startTime, endTime, date, errors, bookings]);
   const formatTime = (date: Date) => {
     return date.toTimeString().slice(0, 5);
   };
@@ -488,11 +497,11 @@ useEffect(() => {
       <Snackbar
         open={alert.open}
         autoHideDuration={6000}
-        onClose={() => setAlert(prev => ({ ...prev, open: false }))}
+        onClose={() => setAlert((prev) => ({ ...prev, open: false }))}
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
       >
         <Alert
-          onClose={() => setAlert(prev => ({ ...prev, open: false }))}
+          onClose={() => setAlert((prev) => ({ ...prev, open: false }))}
           severity={alert.severity}
           variant="filled"
           sx={{ width: "100%" }}
@@ -525,453 +534,473 @@ useEffect(() => {
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 container mx-auto p-4">
-        <div className="max-w-4xl mx-auto">
-          {/* PRICING INFORMATION */}
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-              <Calendar className="mr-2" size={20} />
-              Pricing & Booking
-            </h2>
+      <div className="flex md:flex-row flex-col-reverse">
+        {/* MAIN CONTENT */}
+        <main className="flex-1 container mx-auto p-4">
+          <div className="max-w-4xl mx-auto">
+            {/* PRICING INFORMATION */}
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <Calendar className="mr-2" size={20} />
+                Pricing & Booking
+              </h2>
 
-            {/* Pricing Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              {/* Weekday Pricing Card */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl p-4 shadow-md border border-green-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-green-800">Weekdays</h3>
-                  <span className="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">
-                    Mon-Thu
-                  </span>
+              {/* Pricing Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {/* Weekday Pricing Card */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl p-4 shadow-md border border-green-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-green-800">Weekdays</h3>
+                    <span className="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">
+                      Mon-Thu
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">6AM - 12PM</span>
+                      <span className="font-bold text-green-700">₹600/hr</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">12PM - 6PM</span>
+                      <span className="font-bold text-blue-700">₹500/hr</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">6PM - 6AM</span>
+                      <span className="font-bold text-purple-700">₹700/hr</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">6AM - 12PM</span>
-                    <span className="font-bold text-green-700">₹600/hr</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">12PM - 6PM</span>
-                    <span className="font-bold text-blue-700">₹500/hr</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">6PM - 6AM</span>
-                    <span className="font-bold text-purple-700">₹700/hr</span>
-                  </div>
-                </div>
-              </div>
 
-              {/* Weekend Pricing Card */}
-              <div className="bg-gradient-to-br from-red-50 to-pink-100 rounded-xl p-4 shadow-md border border-red-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-red-800">Weekends</h3>
-                  <span className="bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
-                    Fri-Sun
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">6AM - 12PM</span>
-                    <span className="font-bold text-green-700">₹700/hr</span>
+                {/* Weekend Pricing Card */}
+                <div className="bg-gradient-to-br from-red-50 to-pink-100 rounded-xl p-4 shadow-md border border-red-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-red-800">Weekends</h3>
+                    <span className="bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
+                      Fri-Sun
+                    </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">12PM - 6PM</span>
-                    <span className="font-bold text-blue-700">₹600/hr</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">6PM - 6AM</span>
-                    <span className="font-bold text-purple-700">₹900/hr</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">6AM - 12PM</span>
+                      <span className="font-bold text-green-700">₹700/hr</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">12PM - 6PM</span>
+                      <span className="font-bold text-blue-700">₹600/hr</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">6PM - 6AM</span>
+                      <span className="font-bold text-purple-700">₹900/hr</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* BOOKING FORM */}
-          <div className="bg-white rounded-2xl shadow-xl p-5 mb-6">
-            {/* Date Picker */}
-            <div className="mb-5">
-              <label className="block font-semibold text-gray-700 mb-2 flex items-center">
-                <Calendar className="mr-2" size={18} />
-                Select Date
-              </label>
-              <input
-                type="date"
-                className={`w-full p-4 border-2 ${
-                  errors.date ? "border-red-500" : "border-gray-200"
-                } rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
-                value={date}
-                onChange={handleDateChange}
-                min={new Date().toISOString().split("T")[0]}
-              />
-              {errors.date && (
-                <div className="flex items-center mt-2 text-red-600 text-sm">
-                  <AlertCircle size={14} className="mr-1" />
-                  {errors.date}
-                </div>
-              )}
-            </div>
-
-            {/* Time Selection */}
-            <div className="mb-5">
-              <label className="block font-semibold text-gray-700 mb-3 flex items-center">
-                <Clock className="mr-2" size={18} />
-                Select Time Slot
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                {/* Start Time Dropdown */}
-                <div className="relative" ref={startDropdownRef}>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    Start Time
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowStartDropdown(!showStartDropdown);
-                      setShowEndDropdown(false);
-                    }}
-                    className={`w-full p-4 border-2 ${
-                      errors.startTime ? "border-red-500" : "border-gray-200"
-                    } rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all flex justify-between items-center bg-white`}
-                  >
-                    <span
-                      className={`${
-                        startTime ? "text-gray-800" : "text-gray-500"
-                      }`}
-                    >
-                      {formatTimeDisplay(startTime)}
-                    </span>
-                    <ChevronDown
-                      size={16}
-                      className={`text-gray-500 transition-transform ${
-                        showStartDropdown ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-
-                  {/* Start Time Dropdown Menu */}
-                  {showStartDropdown && (
-                    <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                      {getStartTimeOptions().map((time) => (
-                        <button
-                          key={`start-${time}`}
-                          type="button"
-                          onClick={() => handleStartTimeSelect(time)}
-                          className={`w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors ${
-                            startTime === time
-                              ? "bg-blue-100 text-blue-700 font-medium"
-                              : "text-gray-700"
-                          } border-b border-gray-100 last:border-b-0 flex justify-between items-center`}
-                        >
-                          <div>
-                            <span className="font-medium">
-                              {formatTimeDisplay(time)}
-                            </span>
-                            <span className="text-xs text-gray-500 ml-2">
-                              {getTimePeriod(time)}
-                            </span>
-                          </div>
-                          {startTime === time && (
-                            <span className="text-blue-600 text-xs font-medium bg-blue-100 px-2 py-1 rounded">
-                              ✓
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {errors.startTime && (
-                    <div className="flex items-center mt-2 text-red-600 text-sm">
-                      <AlertCircle size={14} className="mr-1" />
-                      {errors.startTime}
-                    </div>
-                  )}
-                </div>
-
-                {/* End Time Dropdown */}
-                <div className="relative" ref={endDropdownRef}>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    End Time
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (startTime) {
-                        setShowEndDropdown(!showEndDropdown);
-                        setShowStartDropdown(false);
-                      }
-                    }}
-                    disabled={!startTime}
-                    className={`w-full p-4 border-2 ${
-                      errors.endTime ? "border-red-500" : "border-gray-200"
-                    } ${
-                      !startTime ? "bg-gray-100 cursor-not-allowed" : "bg-white"
-                    } rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all flex justify-between items-center`}
-                  >
-                    <span
-                      className={`${
-                        endTime ? "text-gray-800" : "text-gray-500"
-                      }`}
-                    >
-                      {formatTimeDisplay(endTime)}
-                    </span>
-                    <ChevronDown
-                      size={16}
-                      className={`text-gray-500 transition-transform ${
-                        showEndDropdown ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-
-                  {/* End Time Dropdown Menu */}
-                  {showEndDropdown && startTime && (
-                    <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                      {getEndTimeOptions().map((time) => (
-                        <button
-                          key={`end-${time}`}
-                          type="button"
-                          onClick={() => handleEndTimeSelect(time)}
-                          className={`w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors ${
-                            endTime === time
-                              ? "bg-blue-100 text-blue-700 font-medium"
-                              : "text-gray-700"
-                          } border-b border-gray-100 last:border-b-0 flex justify-between items-center`}
-                        >
-                          <div>
-                            <span className="font-medium">
-                              {formatTimeDisplay(time)}
-                            </span>
-                            <span className="text-xs text-gray-500 ml-2">
-                              {getTimePeriod(time)}
-                            </span>
-                          </div>
-                          {endTime === time && (
-                            <span className="text-blue-600 text-xs font-medium bg-blue-100 px-2 py-1 rounded">
-                              ✓
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {errors.endTime && (
-                    <div className="flex items-center mt-2 text-red-600 text-sm">
-                      <AlertCircle size={14} className="mr-1" />
-                      {errors.endTime}
-                    </div>
-                  )}
-                </div>
+            {/* BOOKING FORM */}
+            <div className="bg-white rounded-2xl shadow-xl p-5 mb-6">
+              {/* Date Picker */}
+              <div className="mb-5">
+                <label className="block font-semibold text-gray-700 mb-2 flex items-center">
+                  <Calendar className="mr-2" size={18} />
+                  Select Date
+                </label>
+                <input
+                  type="date"
+                  className={`w-full p-4 border-2 ${
+                    errors.date ? "border-red-500" : "border-gray-200"
+                  } rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
+                  value={date}
+                  onChange={handleDateChange}
+                  min={new Date().toISOString().split("T")[0]}
+                />
+                {errors.date && (
+                  <div className="flex items-center mt-2 text-red-600 text-sm">
+                    <AlertCircle size={14} className="mr-1" />
+                    {errors.date}
+                  </div>
+                )}
               </div>
 
-              {/* Time Validation Summary */}
-              {(errors.startTime || errors.endTime) && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-start">
-                    <AlertCircle
-                      className="mr-2 text-red-600 mt-0.5"
-                      size={16}
-                    />
-                    <div>
-                      <h4 className="font-semibold text-red-700 text-sm">
-                        Time Selection Rules:
-                      </h4>
-                      <ul className="text-xs text-red-600 mt-1 space-y-1">
-                        <li>• End time must be after start time</li>
-                        <li>• Cannot select past times for today's date</li>
-                        <li>• Times are available only at 00 and 30 minutes</li>
-                        <li>• Minimum booking duration: 30 minutes</li>
-                        <li>
-                          • Midnight (12:00 AM) is available only in end time
-                          for today
-                        </li>
-                        <li>
-                          • Midnight (12:00 AM) represents the end of the day
-                        </li>
-                        <li>
-                          • Overnight bookings (e.g., 10:00 PM to 12:00 AM) are
-                          allowed
-                        </li>
-                      </ul>
-                    </div>
+              {/* Time Selection */}
+              <div className="mb-5">
+                <label className="block font-semibold text-gray-700 mb-3 flex items-center">
+                  <Clock className="mr-2" size={18} />
+                  Select Time Slot
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Start Time Dropdown */}
+                  <div className="relative" ref={startDropdownRef}>
+                    <label className="block text-sm text-gray-600 mb-1">
+                      Start Time
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStartDropdown(!showStartDropdown);
+                        setShowEndDropdown(false);
+                      }}
+                      className={`w-full p-4 border-2 ${
+                        errors.startTime ? "border-red-500" : "border-gray-200"
+                      } rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all flex justify-between items-center bg-white`}
+                    >
+                      <span
+                        className={`${
+                          startTime ? "text-gray-800" : "text-gray-500"
+                        }`}
+                      >
+                        {formatTimeDisplay(startTime)}
+                      </span>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-500 transition-transform ${
+                          showStartDropdown ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {/* Start Time Dropdown Menu */}
+                    {showStartDropdown && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                        {getStartTimeOptions().map((time) => (
+                          <button
+                            key={`start-${time}`}
+                            type="button"
+                            onClick={() => handleStartTimeSelect(time)}
+                            className={`w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors ${
+                              startTime === time
+                                ? "bg-blue-100 text-blue-700 font-medium"
+                                : "text-gray-700"
+                            } border-b border-gray-100 last:border-b-0 flex justify-between items-center`}
+                          >
+                            <div>
+                              <span className="font-medium">
+                                {formatTimeDisplay(time)}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-2">
+                                {getTimePeriod(time)}
+                              </span>
+                            </div>
+                            {startTime === time && (
+                              <span className="text-blue-600 text-xs font-medium bg-blue-100 px-2 py-1 rounded">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {errors.startTime && (
+                      <div className="flex items-center mt-2 text-red-600 text-sm">
+                        <AlertCircle size={14} className="mr-1" />
+                        {errors.startTime}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* End Time Dropdown */}
+                  <div className="relative" ref={endDropdownRef}>
+                    <label className="block text-sm text-gray-600 mb-1">
+                      End Time
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (startTime) {
+                          setShowEndDropdown(!showEndDropdown);
+                          setShowStartDropdown(false);
+                        }
+                      }}
+                      disabled={!startTime}
+                      className={`w-full p-4 border-2 ${
+                        errors.endTime ? "border-red-500" : "border-gray-200"
+                      } ${
+                        !startTime
+                          ? "bg-gray-100 cursor-not-allowed"
+                          : "bg-white"
+                      } rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all flex justify-between items-center`}
+                    >
+                      <span
+                        className={`${
+                          endTime ? "text-gray-800" : "text-gray-500"
+                        }`}
+                      >
+                        {formatTimeDisplay(endTime)}
+                      </span>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-500 transition-transform ${
+                          showEndDropdown ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {/* End Time Dropdown Menu */}
+                    {showEndDropdown && startTime && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                        {getEndTimeOptions().map((time) => (
+                          <button
+                            key={`end-${time}`}
+                            type="button"
+                            onClick={() => handleEndTimeSelect(time)}
+                            className={`w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors ${
+                              endTime === time
+                                ? "bg-blue-100 text-blue-700 font-medium"
+                                : "text-gray-700"
+                            } border-b border-gray-100 last:border-b-0 flex justify-between items-center`}
+                          >
+                            <div>
+                              <span className="font-medium">
+                                {formatTimeDisplay(time)}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-2">
+                                {getTimePeriod(time)}
+                              </span>
+                            </div>
+                            {endTime === time && (
+                              <span className="text-blue-600 text-xs font-medium bg-blue-100 px-2 py-1 rounded">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {errors.endTime && (
+                      <div className="flex items-center mt-2 text-red-600 text-sm">
+                        <AlertCircle size={14} className="mr-1" />
+                        {errors.endTime}
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* Selected Time Display */}
-              {startTime &&
-                endTime &&
-                errors.startTime === "" &&
-                errors.endTime === "" && (
-                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center">
-                      <Clock className="mr-2 text-green-600" size={16} />
+                {/* Time Validation Summary */}
+                {(errors.startTime || errors.endTime) && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start">
+                      <AlertCircle
+                        className="mr-2 text-red-600 mt-0.5"
+                        size={16}
+                      />
                       <div>
-                        <span className="text-green-700 font-medium">
-                          Selected: {formatTimeDisplay(startTime)} to{" "}
-                          {formatTimeDisplay(endTime)}
-                        </span>
+                        <h4 className="font-semibold text-red-700 text-sm">
+                          Time Selection Rules:
+                        </h4>
+                        <ul className="text-xs text-red-600 mt-1 space-y-1">
+                          <li>• End time must be after start time</li>
+                          <li>• Cannot select past times for today's date</li>
+                          <li>
+                            • Times are available only at 00 and 30 minutes
+                          </li>
+                          <li>• Minimum booking duration: 30 minutes</li>
+                          <li>
+                            • Midnight (12:00 AM) is available only in end time
+                            for today
+                          </li>
+                          <li>
+                            • Midnight (12:00 AM) represents the end of the day
+                          </li>
+                          <li>
+                            • Overnight bookings (e.g., 10:00 PM to 12:00 AM)
+                            are allowed
+                          </li>
+                        </ul>
                       </div>
                     </div>
                   </div>
                 )}
-            </div>
 
-            {/* Coupon Input */}
-            <div className="mb-6">
-              <label className="block font-semibold text-gray-700 mb-2 flex items-center">
-                <Tag className="mr-2" size={18} />
-                Coupon Code
-              </label>
-              <div className="flex flex-row gap-3">
-                <input
-                  type="text"
-                  placeholder="Enter coupon code (optional)"
-                  className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  value={coupon}
-                  onChange={handleCouponChange}
-                />
-                <Button onClick={ApplyCoup}>Apply</Button>
-              </div>
-            </div>
-
-            {/* INVOICE SECTION */}
-            {startTime &&
-              endTime &&
-              amount > 0 &&
-              errors.startTime === "" &&
-              errors.endTime === "" && (
-                <div className="mt-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-100">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                    <span className="mr-2">🧾</span>
-                    Booking Summary
-                  </h3>
-
-                  {/* Time Slots Breakdown */}
-                  <div className="space-y-3 mb-4">
-                    {timeSlots.map((slot, index) => (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-100"
-                      >
+                {/* Selected Time Display */}
+                {startTime &&
+                  endTime &&
+                  errors.startTime === "" &&
+                  errors.endTime === "" && (
+                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center">
+                        <Clock className="mr-2 text-green-600" size={16} />
                         <div>
-                          <div className="font-medium text-gray-800">
-                            {slot.period}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {slot.hours} hrs × ₹{slot.rate}/hr
-                          </div>
-                        </div>
-                        <div className="font-bold text-blue-700">
-                          ₹{slot.amount}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Total Amount */}
-                  <div className="flex justify-between items-center pt-4 border-t-2 border-gray-200">
-                    <div className="text-lg font-bold text-gray-800">
-                      Total Amount
-                    </div>
-                    <div className="text-2xl font-bold text-blue-700">
-                      ₹{amount}
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-xs text-gray-500 text-center">
-                    • No Cancellation and Refunds • All taxes included • No
-                    hidden charges
-                  </div>
-                </div>
-              )}
-
-            {/* BOOK NOW BUTTON */}
-            <button
-              onClick={handleBookNow}
-              disabled={
-                !startTime ||
-                !endTime ||
-                amount === 0 ||
-                errors.startTime !== "" ||
-                errors.endTime !== "" ||
-                errors.date !== ""
-              }
-              className={`w-full py-4 mt-6 text-white font-bold rounded-xl shadow-lg transition-all transform ${
-                !startTime ||
-                !endTime ||
-                amount === 0 ||
-                errors.startTime !== "" ||
-                errors.endTime !== "" ||
-                errors.date !== ""
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 active:scale-95"
-              }`}
-            >
-              {!startTime ||
-              !endTime ||
-              errors.startTime !== "" ||
-              errors.endTime !== "" ||
-              errors.date !== ""
-                ? "Enter all values to book"
-                : `Confirm Booking - ₹${amount}`}
-            </button>
-          </div>
-
-          {/* BOOKED SLOTS */}
-          <div className="bg-white rounded-2xl shadow-xl p-5">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">
-              📅 Today's Bookings
-            </h2>
-
-            {bookings.filter((slot) => slot.SlotDate === date).length === 0 ? (
-              <div className="text-center py-8 bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl border-2 border-green-200">
-                <div className="text-4xl mb-3">🎯</div>
-                <p className="font-bold text-green-700 text-lg">
-                  All Slots Available!
-                </p>
-                <p className="text-green-600 mt-1">No bookings for this date</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {bookings
-                  .filter((slot) => slot.SlotDate === date)
-                  .sort((a, b) => a.StartTime.localeCompare(b.StartTime))
-                  .map((slot, index) => (
-                    <div
-                      key={index}
-                      className="p-4 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl border-l-4 border-red-500"
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="font-bold text-red-700 text-lg">
-                            {slot.StartTime} - {slot.EndTime}
-                          </div>
-                          <div className="text-sm text-red-600 flex items-center mt-1">
-                            <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-                            Booked •{" "}
-                            {slot.StartTime < "12:00"
-                              ? "Morning"
-                              : slot.StartTime < "18:00"
-                              ? "Afternoon"
-                              : "Evening"}
-                          </div>
-                        </div>
-                        <div className="text-red-500">
-                          <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                            ⛔ Occupied
+                          <span className="text-green-700 font-medium">
+                            Selected: {formatTimeDisplay(startTime)} to{" "}
+                            {formatTimeDisplay(endTime)}
                           </span>
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )}
               </div>
-            )}
+
+              {/* Coupon Input */}
+              <div className="mb-6">
+                <label className="block font-semibold text-gray-700 mb-2 flex items-center">
+                  <Tag className="mr-2" size={18} />
+                  Coupon Code
+                </label>
+                <div className="flex flex-row gap-3">
+                  <input
+                    type="text"
+                    placeholder="Enter coupon code (optional)"
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    value={coupon}
+                    onChange={handleCouponChange}
+                  />
+                  <Button onClick={ApplyCoup}>Apply</Button>
+                </div>
+              </div>
+
+              {/* INVOICE SECTION */}
+              {startTime &&
+                endTime &&
+                amount > 0 &&
+                errors.startTime === "" &&
+                errors.endTime === "" && (
+                  <div className="mt-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-100">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                      <span className="mr-2">🧾</span>
+                      Booking Summary
+                    </h3>
+
+                    {/* Time Slots Breakdown */}
+                    <div className="space-y-3 mb-4">
+                      {timeSlots.map((slot, index) => (
+                        <div
+                          key={index}
+                          className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-100"
+                        >
+                          <div>
+                            <div className="font-medium text-gray-800">
+                              {slot.period}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {slot.hours} hrs × ₹{slot.rate}/hr
+                            </div>
+                          </div>
+                          <div className="font-bold text-blue-700">
+                            ₹{slot.amount}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total Amount */}
+                    <div className="flex justify-between items-center pt-4 border-t-2 border-gray-200">
+                      <div className="text-lg font-bold text-gray-800">
+                        Total Amount
+                      </div>
+                      <div className="text-2xl font-bold text-blue-700">
+                        ₹{amount}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-xs text-gray-500 text-center">
+                      • No Cancellation and Refunds • All taxes included • No
+                      hidden charges
+                    </div>
+                  </div>
+                )}
+
+              {/* BOOK NOW BUTTON */}
+              <button
+                onClick={handleBookNow}
+                disabled={
+                  !startTime ||
+                  !endTime ||
+                  amount === 0 ||
+                  errors.startTime !== "" ||
+                  errors.endTime !== "" ||
+                  errors.date !== ""
+                }
+                className={`w-full py-4 mt-6 text-white font-bold rounded-xl shadow-lg transition-all transform ${
+                  !startTime ||
+                  !endTime ||
+                  amount === 0 ||
+                  errors.startTime !== "" ||
+                  errors.endTime !== "" ||
+                  errors.date !== ""
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 active:scale-95"
+                }`}
+              >
+                {!startTime ||
+                !endTime ||
+                errors.startTime !== "" ||
+                errors.endTime !== "" ||
+                errors.date !== ""
+                  ? "Enter all values to book"
+                  : `Confirm Booking - ₹${amount}`}
+              </button>
+            </div>
+
+            {/* BOOKED SLOTS */}
+            <div className="bg-white rounded-2xl shadow-xl p-5">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">
+                📅 Today's Bookings
+              </h2>
+
+              {bookings.filter((slot) => slot.SlotDate === date).length ===
+              0 ? (
+                <div className="text-center py-8 bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl border-2 border-green-200">
+                  <div className="text-4xl mb-3">🎯</div>
+                  <p className="font-bold text-green-700 text-lg">
+                    All Slots Available!
+                  </p>
+                  <p className="text-green-600 mt-1">
+                    No bookings for this date
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {bookings
+                    .filter((slot) => slot.SlotDate === date)
+                    .sort((a, b) => a.StartTime.localeCompare(b.StartTime))
+                    .map((slot, index) => (
+                      <div
+                        key={index}
+                        className="p-4 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl border-l-4 border-red-500"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="font-bold text-red-700 text-lg">
+                              {slot.StartTime} - {slot.EndTime}
+                            </div>
+                            <div className="text-sm text-red-600 flex items-center mt-1">
+                              <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                              Booked •{" "}
+                              {slot.StartTime < "12:00"
+                                ? "Morning"
+                                : slot.StartTime < "18:00"
+                                ? "Afternoon"
+                                : "Evening"}
+                            </div>
+                          </div>
+                          <div className="text-red-500">
+                            <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                              ⛔ Occupied
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+        <div className="flex flex-col gap-3">
+          <span>Coupon Codes</span>
+          <div className="flex md:flex-col flex-row overflow-x-auto">
+            {coupons &&
+              coupons.map((coup) => (
+                <div className="flex flex-row gap-4">
+                  <span>{coup.Percentage}% off</span>
+                  <button onClick={() => setCoupon(coup.Name)}>Apply</button>
+                </div>
+              ))}
           </div>
         </div>
-      </main>
-
+      </div>
       {/* FOOTER WITH CONTACT DETAILS */}
       <footer className="bg-gradient-to-r from-gray-900 to-gray-800 text-white mt-8">
         <div className="container mx-auto p-6">

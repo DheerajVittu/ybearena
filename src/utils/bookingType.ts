@@ -23,3 +23,12 @@ export type BankAccountType = {
     created_at:string;
     Upi:string;
 }
+
+export type CouponType = {
+    id:number;
+    Name:string;
+    Percentage:number;
+    Used:number;
+    MaxUses:number;
+    created_at:string;
+}

@@ -87,3 +87,19 @@ export const GetBankAccounts = async() => {
     return [];
   }
 }
+
+export const GetCoupons = async() => {
+  try{
+    const {data,error} = await supabase.from("Coupons").select("*");
+    if (error) {
+      console.error("Supabase error:", error);
+      return [];
+    }
+    console.log("Coupons fetched:", data);
+    return data;
+  }
+  catch(error:any){
+    console.error("Error fetching coupons:", error?.message);
+    return [];
+  }
+}
